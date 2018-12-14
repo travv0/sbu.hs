@@ -1,7 +1,7 @@
 module Options
-  ( Command
-  , BackupOptions
-  , backupParser
+  ( Command(..)
+  , BackupOptions(..)
+  , AddOptions(..)
   , opts
   )
 where
@@ -15,7 +15,7 @@ data Options = Options
 data Command
   = Backup BackupOptions
   | Add AddOptions
-  -- | List ListOptions
+  | List
   -- | Info InfoOptions
   -- | Remove RemoveOptions
   -- | Edit EditOptions
@@ -24,7 +24,7 @@ data Command
 
 data BackupOptions = BackupOptions
   { backupGames :: [String]
-  , loop :: Bool
+  , backupLoop :: Bool
   } deriving (Show)
 
 data AddOptions = AddOptions
@@ -35,7 +35,7 @@ backupParser :: Parser Command
 backupParser =
   Backup
     <$> (   BackupOptions
-        <$> some
+        <$> many
               (argument
                 str
                 (  metavar "GAMES..."
@@ -62,6 +62,11 @@ opts = info
       <> command
            "add"
            (info addParser (fullDesc <> progDesc "Add games to backup"))
+      <> command
+           "list"
+           (info (pure List)
+                 (fullDesc <> progDesc "List games that can be backed up")
+           )
       )
   <**> helper
   )
