@@ -1,6 +1,8 @@
 module Main where
 
-import Lib
+import           Options.Applicative
+
+import           Options
 
 main :: IO ()
-main = someFunc
+main = print =<< execParser opts
