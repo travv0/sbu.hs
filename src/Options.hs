@@ -1,13 +1,22 @@
 module Options
-  ( Command(..)
+  ( SbuOptions(..)
+  , Command(..)
   , BackupOptions(..)
   , AddOptions(..)
   , opts
   )
 where
 
-import           Options.Applicative
+import           Control.Monad.IO.Class
+import           Data.String                    ( IsString )
+
+import           Options.Applicative     hiding ( infoParser )
 import           Path
+
+data SbuOptions = SbuOptions
+  { sbuConfigPath :: Maybe (Path Abs File)
+  , sbuCommand :: Command
+  } deriving (Show)
 
 data Command
   = Backup BackupOptions
@@ -39,16 +48,16 @@ data RemoveOptions = RemoveOptions
 
 data EditOptions = EditOptions
   { editGame :: String
-  , editName :: String
-  , editPath :: Path Abs Dir
-  , editGlob :: String
+  , editName :: Maybe String
+  , editPath :: Maybe (Path Abs Dir)
+  , editGlob :: Maybe String
   } deriving (Show)
 
-data ConfigOptions = ConfigOptions
-  { configBackupDir :: Path Abs Dir
-  , configBackupFreq :: Integer
-  , configBackupsToKeep :: Integer
-  } deriving (Show)
+data ConfigOptions = ConfigOptions { configBackupDir :: Maybe (Path Abs Dir)
+  , configBackupFreq :: Maybe Integer
+  , configBackupsToKeep :: Maybe Integer
+  } | ConfigDefaults
+   deriving (Show)
 
 backupParser :: Parser Command
 backupParser =
@@ -75,7 +84,7 @@ addParser = Add . AddOptions <$> some
   (argument str (metavar "GAMES..." <> help "List of games to add"))
 
 infoParser :: Parser Command
-infoParser = Info . InfoOptions <$> some
+infoParser = Info . InfoOptions <$> many
   (argument
     str
     (  metavar "GAMES..."
@@ -88,7 +97,7 @@ removeParser :: Parser Command
 removeParser =
   Remove
     <$> (   RemoveOptions
-        <$> many
+        <$> some
               (argument
                 str
                 (metavar "GAMES..." <> help "List of games to remove")
@@ -99,8 +108,88 @@ removeParser =
               )
         )
 
-opts = info
-  (    hsubparser
+editParser :: Parser Command
+editParser =
+  Edit
+    <$> (   EditOptions
+        <$> argument str (metavar "GAME")
+        <*> option
+              maybeStr
+              (  long "name"
+              <> short 'n'
+              <> metavar "NEW_NAME"
+              <> value Nothing
+              <> help "New name"
+              )
+        <*> option
+              maybeDir
+              (  long "path"
+              <> short 'p'
+              <> metavar "NEW_SAVE_PATH"
+              <> value Nothing
+              <> help "New save path"
+              )
+        <*> option
+              maybeStr
+              (  long "glob"
+              <> short 'g'
+              <> metavar "NEW_SAVE_FILE_GLOB"
+              <> value Nothing
+              <> help "New save file glob"
+              )
+        )
+
+configParser :: Parser Command
+configParser =
+  Config
+    <$> (   ConfigOptions
+        <$> option
+              maybeDir
+              (  long "path"
+              <> short 'p'
+              <> metavar "BACKUP_PATH"
+              <> value Nothing
+              <> help "Path to directory in which to back up saves"
+              )
+        <*> option
+              maybeAuto
+              (  long "frequency"
+              <> short 'f'
+              <> metavar "BACKUP_FREQUENCY"
+              <> value Nothing
+              <> help "Frequency in minutes to backup saves when looping"
+              )
+        <*> option
+              maybeAuto
+              (  long "keep"
+              <> short 'k'
+              <> metavar "BACKUPS_TO_KEEP"
+              <> value Nothing
+              <> help "How many copies of each backed-up file to keep"
+              )
+        <|> flag'
+              ConfigDefaults
+              (  long "use-defaults"
+              <> short 'd'
+              <> help
+                   "Keep running, backing up games at the interval specified in your config file"
+              )
+        )
+
+opts =
+  SbuOptions
+    <$> option
+          maybeFile
+          (  long "config"
+          <> short 'c'
+          <> metavar "CONFIG_FILE"
+          <> value Nothing
+          <> help "Path to configuration file"
+          )
+    <*> commands
+
+commands =
+  hsubparser
       (  command
           "backup"
           (info backupParser (fullDesc <> progDesc "Backup your game saves"))
@@ -112,7 +201,39 @@ opts = info
            (info (pure List)
                  (fullDesc <> progDesc "List games that can be backed up")
            )
+      <> command
+           "info"
+           (info infoParser (fullDesc <> progDesc "List info for games"))
+      <> command
+           "remove"
+           (info removeParser
+                 (fullDesc <> progDesc "Remove games from backup")
+           )
+      <> command "edit"
+                 (info editParser (fullDesc <> progDesc "Edit game info"))
+      <> command
+           "config"
+           (info configParser
+                 (fullDesc <> progDesc "Manage sbu configuration")
+           )
       )
-  <**> helper
-  )
-  idm
+    <**> helper
+
+maybeStr :: IsString a => ReadM (Maybe a)
+maybeStr = Just <$> str
+
+maybeDir :: ReadM (Maybe (Path Abs Dir))
+maybeDir = eitherReader $ \arg -> case parseAbsDir arg of
+  Right r -> return $ Just r
+  _       -> Left $ "cannot parse value `" ++ arg ++ "'.  Path must be absolute"
+
+maybeFile :: ReadM (Maybe (Path Abs File))
+maybeFile = eitherReader $ \arg -> case parseAbsFile arg of
+  Right r -> return $ Just r
+  _       -> Left $ "cannot parse value `" ++ arg ++ "'.  Path must be absolute"
+
+maybeAuto :: Read a => ReadM (Maybe a)
+maybeAuto = eitherReader $ \arg -> case reads arg of
+  [(r, "")] -> return $ Just r
+  _         -> Left $ "cannot parse value `" ++ arg ++ "'"
+
