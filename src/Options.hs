@@ -7,19 +7,16 @@ module Options
 where
 
 import           Options.Applicative
-
-data Options = Options
-  { optCommand :: Command }
-  deriving (Show)
+import           Path
 
 data Command
   = Backup BackupOptions
   | Add AddOptions
   | List
-  -- | Info InfoOptions
-  -- | Remove RemoveOptions
-  -- | Edit EditOptions
-  -- | Config ConfigOptions
+  | Info InfoOptions
+  | Remove RemoveOptions
+  | Edit EditOptions
+  | Config ConfigOptions
   deriving (Show)
 
 data BackupOptions = BackupOptions
@@ -27,8 +24,30 @@ data BackupOptions = BackupOptions
   , backupLoop :: Bool
   } deriving (Show)
 
-data AddOptions = AddOptions
+newtype AddOptions = AddOptions
   { addGames :: [String]
+  } deriving (Show)
+
+newtype InfoOptions = InfoOptions
+  { infoGames :: [String]
+  } deriving (Show)
+
+data RemoveOptions = RemoveOptions
+  { removeGames :: [String]
+  , removeYes :: Bool
+  } deriving (Show)
+
+data EditOptions = EditOptions
+  { editGame :: String
+  , editName :: String
+  , editPath :: Path Abs Dir
+  , editGlob :: String
+  } deriving (Show)
+
+data ConfigOptions = ConfigOptions
+  { configBackupDir :: Path Abs Dir
+  , configBackupFreq :: Integer
+  , configBackupsToKeep :: Integer
   } deriving (Show)
 
 backupParser :: Parser Command
@@ -50,9 +69,35 @@ backupParser =
                    "Keep running, backing up games at the interval specified in your config file"
               )
         )
+
 addParser :: Parser Command
-addParser = Add <$> AddOptions <$> some
+addParser = Add . AddOptions <$> some
   (argument str (metavar "GAMES..." <> help "List of games to add"))
+
+infoParser :: Parser Command
+infoParser = Info . InfoOptions <$> some
+  (argument
+    str
+    (  metavar "GAMES..."
+    <> help
+         "List of games to display info for.  If not provided, will display info for all games"
+    )
+  )
+
+removeParser :: Parser Command
+removeParser =
+  Remove
+    <$> (   RemoveOptions
+        <$> many
+              (argument
+                str
+                (metavar "GAMES..." <> help "List of games to remove")
+              )
+        <*> switch
+              (long "yes" <> short 'y' <> help
+                "Remove all without confirmation prompts"
+              )
+        )
 
 opts = info
   (    hsubparser
