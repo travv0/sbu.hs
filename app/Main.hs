@@ -3,6 +3,7 @@ module Main where
 import           Options.Applicative
 
 import           Options
+import           Lib
 
 main :: IO ()
-main = print =<< execParser opts
+main = handleCommand =<< execParser opts
