@@ -6,4 +6,4 @@ import           Options
 import           Lib
 
 main :: IO ()
-main = handleCommand =<< execParser opts
+main = handleCommand =<< execParser (info opts idm)
