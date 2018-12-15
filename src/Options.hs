@@ -19,13 +19,13 @@ data SbuOptions = SbuOptions
   } deriving (Show)
 
 data Command
-  = Backup BackupOptions
-  | Add AddOptions
-  | List
-  | Info InfoOptions
-  | Remove RemoveOptions
-  | Edit EditOptions
-  | Config ConfigOptions
+  = BackupCmd BackupOptions
+  | AddCmd AddOptions
+  | ListCmd
+  | InfoCmd InfoOptions
+  | RemoveCmd RemoveOptions
+  | EditCmd EditOptions
+  | ConfigCmd ConfigOptions
   deriving (Show)
 
 data BackupOptions = BackupOptions
@@ -53,15 +53,17 @@ data EditOptions = EditOptions
   , editGlob :: Maybe String
   } deriving (Show)
 
-data ConfigOptions = ConfigOptions { configBackupDir :: Maybe (Path Abs Dir)
-  , configBackupFreq :: Maybe Integer
-  , configBackupsToKeep :: Maybe Integer
-  } | ConfigDefaults
-   deriving (Show)
+data ConfigOptions = ConfigOptions
+  { configOptBackupDir :: Maybe (Path Abs Dir)
+  , configOptBackupFreq :: Maybe Integer
+  , configOptBackupsToKeep :: Maybe Integer
+  }
+    | ConfigDefaults
+    deriving (Show)
 
 backupParser :: Parser Command
 backupParser =
-  Backup
+  BackupCmd
     <$> (   BackupOptions
         <$> many
               (argument
@@ -80,11 +82,11 @@ backupParser =
         )
 
 addParser :: Parser Command
-addParser = Add . AddOptions <$> some
+addParser = AddCmd . AddOptions <$> some
   (argument str (metavar "GAMES..." <> help "List of games to add"))
 
 infoParser :: Parser Command
-infoParser = Info . InfoOptions <$> many
+infoParser = InfoCmd . InfoOptions <$> many
   (argument
     str
     (  metavar "GAMES..."
@@ -95,7 +97,7 @@ infoParser = Info . InfoOptions <$> many
 
 removeParser :: Parser Command
 removeParser =
-  Remove
+  RemoveCmd
     <$> (   RemoveOptions
         <$> some
               (argument
@@ -110,7 +112,7 @@ removeParser =
 
 editParser :: Parser Command
 editParser =
-  Edit
+  EditCmd
     <$> (   EditOptions
         <$> argument str (metavar "GAME")
         <*> option
@@ -141,7 +143,7 @@ editParser =
 
 configParser :: Parser Command
 configParser =
-  Config
+  ConfigCmd
     <$> (   ConfigOptions
         <$> option
               maybeDir
@@ -198,7 +200,7 @@ commands =
            (info addParser (fullDesc <> progDesc "Add games to backup"))
       <> command
            "list"
-           (info (pure List)
+           (info (pure ListCmd)
                  (fullDesc <> progDesc "List games that can be backed up")
            )
       <> command
@@ -236,4 +238,3 @@ maybeAuto :: Read a => ReadM (Maybe a)
 maybeAuto = eitherReader $ \arg -> case reads arg of
   [(r, "")] -> return $ Just r
   _         -> Left $ "cannot parse value `" ++ arg ++ "'"
-
