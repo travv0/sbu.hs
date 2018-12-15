@@ -1,8 +1,8 @@
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DefaultSignatures #-}
 
 module Types
   ( Config(..)
+  , Game(..)
   )
 where
 
