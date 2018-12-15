@@ -4,6 +4,9 @@ module Options
   , BackupOptions(..)
   , AddOptions(..)
   , InfoOptions(..)
+  , RemoveOptions(..)
+  , EditOptions(..)
+  , ConfigOptions(..)
   , opts
   )
 where

@@ -3,7 +3,9 @@ module Lib
   )
 where
 
+import           Control.Monad
 import qualified Data.ByteString               as BS
+import           Data.Char
 import           Data.List
 import           Data.Maybe
 import           Data.Serialize
@@ -66,9 +68,11 @@ writeConfig :: FilePath -> Config -> IO ()
 writeConfig path config = BS.writeFile path $ encode config
 
 handleCommand :: Command -> Config -> IO Config
-handleCommand (AddCmd (AddOptions games)  ) config = addGames config games
-handleCommand (ListCmd                    ) config = listGames config
+handleCommand (AddCmd (AddOptions games))   config = addGames config games
+handleCommand ListCmd                       config = listGames config
 handleCommand (InfoCmd (InfoOptions games)) config = infoGames config games
+handleCommand (RemoveCmd (RemoveOptions games yes)) config =
+  removeGames config yes games
 handleCommand command config =
   error
     $  "Command not yet implemented.  Some potentially useful info:\n"
@@ -78,13 +82,27 @@ handleCommand command config =
 
 addGames :: Config -> [String] -> IO Config
 addGames config games = do
-  newGames <- sequence (map promptAddGame games)
+  newGames <- mapM promptAddGame games
   return $ config { configGames = newGames `union` configGames config }
 
 listGames :: Config -> IO Config
 listGames config = do
   putStrLn $ intercalate "\n" $ gameNames config
   return config
+
+removeGames :: Config -> Bool -> [String] -> IO Config
+removeGames config yes games = if yes
+  then return $ config
+    { configGames = filter ((`elem` games) . gameName) $ configGames config
+    }
+  else do
+    warnMissingGames config games
+    gamesToRemove <-
+      filterM promptRemove $ filter ((`elem` games) . gameName) $ configGames
+        config
+    return $ config
+      { configGames = filter (`notElem` gamesToRemove) $ configGames config
+      }
 
 infoGames :: Config -> [String] -> IO Config
 infoGames config games = do
@@ -115,16 +133,33 @@ infoGame config gName = do
     else do
       let game = head matchingGames
       putStrLn
-        $  "Game name: "
+        $  "Name: "
         ++ gameName game
         ++ "\n"
-        ++ "Game save path: "
+        ++ "Save path: "
         ++ gamePath game
         ++ "\n"
-        ++ "Game save glob: "
-        ++ gameGlob game
-        ++ "\n"
+        ++ if gameGlob game /= "*"
+             then "Save glob: " ++ gameGlob game ++ "\n"
+             else ""
 
 gameNames :: Config -> [String]
 gameNames config = sort $ map gameName $ configGames config
 
+promptRemove :: Game -> IO Bool
+promptRemove game = do
+  putStr $ "Permanently delete " ++ gameName game ++ "? (y/N) "
+  hFlush stdout
+  input <- getLine
+  return $ toLower (head $ if null input then "n" else input) == 'y'
+
+warnMissingGames :: Config -> [String] -> IO ()
+warnMissingGames config games = mapM_
+  (\g ->
+    when (g `notElem` map gameName (configGames config))
+      $  putStrLn
+      $  "Warning: No game named `"
+      ++ g
+      ++ "'"
+  )
+  games
