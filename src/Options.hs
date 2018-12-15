@@ -28,28 +28,28 @@ data Command
   deriving (Show)
 
 data BackupOptions = BackupOptions
-  { backupGames :: [String]
-  , backupLoop :: Bool
+  { backupOptGames :: [String]
+  , backupOptLoop :: Bool
   } deriving (Show)
 
 newtype AddOptions = AddOptions
-  { addGames :: [String]
+  { addOptGames :: [String]
   } deriving (Show)
 
 newtype InfoOptions = InfoOptions
-  { infoGames :: [String]
+  { infoOptGames :: [String]
   } deriving (Show)
 
 data RemoveOptions = RemoveOptions
-  { removeGames :: [String]
-  , removeYes :: Bool
+  { removeOptGames :: [String]
+  , removeOptYes :: Bool
   } deriving (Show)
 
 data EditOptions = EditOptions
-  { editGame :: String
-  , editName :: Maybe String
-  , editPath :: Maybe FilePath
-  , editGlob :: Maybe String
+  { editOptGame :: String
+  , editOptName :: Maybe String
+  , editOptPath :: Maybe FilePath
+  , editOptGlob :: Maybe String
   } deriving (Show)
 
 data ConfigOptions = ConfigOptions

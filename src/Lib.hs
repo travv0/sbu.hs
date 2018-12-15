@@ -51,10 +51,6 @@ printCreatedConfigMsg path config =
     ++ show (configBackupsToKeep config)
     ++ "\n"
 
-handleCommand :: Command -> Config -> IO ()
-handleCommand (AddCmd (AddOptions games)) _ = print games
-handleCommand c conf = print $ show c ++ " " ++ show conf
-
 readConfig :: FilePath -> IO (Either String Config)
 readConfig path = do
   configExists <- doesFileExist path
@@ -66,3 +62,15 @@ readConfig path = do
 
 writeConfig :: FilePath -> Config -> IO ()
 writeConfig path config = BS.writeFile path $ encode config
+
+handleCommand :: Command -> Config -> IO ()
+handleCommand (AddCmd (AddOptions games)) config = addGames config games
+handleCommand command config =
+  putStrLn
+    $  "Command not yet implemented.  Some potentially useful info:\n"
+    ++ show command
+    ++ "\n"
+    ++ show config
+
+addGames :: Config -> [String] -> IO ()
+addGames config games = undefined
