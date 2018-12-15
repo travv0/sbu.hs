@@ -4,10 +4,12 @@ module Lib
 where
 
 import qualified Data.ByteString               as BS
+import           Data.List
 import           Data.Maybe
 import           Data.Serialize
 import           System.Directory
 import           System.FilePath
+import           System.IO
 
 import           Options
 import           Types
@@ -27,13 +29,12 @@ handleOptions (SbuOptions configPath command) = do
   path   <- fromMaybe <$> defaultConfigPath <*> pure configPath
   config <- readConfig path
   case config of
-    Right c -> handleCommand command c
+    Right c -> handleCommand command c >>= writeConfig path
     Left  _ -> do
       c <- defaultConfig
       printCreatedConfigMsg path c
       createDirectoryIfMissing True $ takeDirectory path
-      writeConfig path c
-      handleCommand command c
+      handleCommand command c >>= writeConfig path
 
 printCreatedConfigMsg :: FilePath -> Config -> IO ()
 printCreatedConfigMsg path config =
@@ -64,14 +65,30 @@ readConfig path = do
 writeConfig :: FilePath -> Config -> IO ()
 writeConfig path config = BS.writeFile path $ encode config
 
-handleCommand :: Command -> Config -> IO ()
-handleCommand (AddCmd (AddOptions games)) config = addGames config games
+handleCommand :: Command -> Config -> IO Config
+handleCommand (AddCmd (AddOptions games)) config = do
+  newGames <- addGames config games
+  return $ config { configGames = newGames `union` configGames config }
 handleCommand command config =
-  putStrLn
+  error
     $  "Command not yet implemented.  Some potentially useful info:\n"
     ++ show command
     ++ "\n"
     ++ show config
 
-addGames :: Config -> [String] -> IO ()
-addGames config games = undefined
+addGames :: Config -> [String] -> IO [Game]
+addGames config games = sequence (map promptAddGame games)
+
+promptAddGame :: String -> IO Game
+promptAddGame name = do
+  putStr $ "Enter save path for " ++ name ++ ": "
+  hFlush stdout
+  path <- getLine
+  if null path
+    then promptAddGame name
+    else do
+      putStr
+        "Enter pattern to match files/folders on for backup (leave blank to backup everything in save path): "
+      hFlush stdout
+      glob <- getLine
+      return $ Game name path $ if null glob then "*" else glob
