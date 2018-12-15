@@ -33,10 +33,28 @@ handleOptions (SbuOptions configPath command) = do
   case config of
     Right c -> handleCommand command c >>= writeConfig path
     Left  _ -> do
-      c <- defaultConfig
-      printCreatedConfigMsg path c
-      createDirectoryIfMissing True $ takeDirectory path
-      handleCommand command c >>= writeConfig path
+      let backupPath = path <.> "bak"
+      backupExists <- doesFileExist backupPath
+      if backupExists
+        then do
+          putStrLn
+            $ "Error reading config file, attempting to read from backup..."
+          backupConfig <- BS.readFile backupPath
+          case decode backupConfig of
+            Right c -> handleCommand command c >>= writeConfig path
+            Left  _ -> do
+              c <- defaultConfig
+              createDefaultConfig c path
+              handleCommand command c >>= writeConfig path
+        else do
+          c <- defaultConfig
+          createDefaultConfig c path
+          handleCommand command c >>= writeConfig path
+
+createDefaultConfig :: Config -> FilePath -> IO ()
+createDefaultConfig config path = do
+  printCreatedConfigMsg path config
+  createDirectoryIfMissing True $ takeDirectory path
 
 printCreatedConfigMsg :: FilePath -> Config -> IO ()
 printCreatedConfigMsg path config =
@@ -65,7 +83,10 @@ readConfig path = do
     else return $ Left $ "Error opening file at `" ++ path ++ "'."
 
 writeConfig :: FilePath -> Config -> IO ()
-writeConfig path config = BS.writeFile path $ encode config
+writeConfig path config = do
+  configExists <- doesFileExist path
+  when (configExists) $ renameFile path $ path <.> "bak"
+  BS.writeFile path $ encode config
 
 handleCommand :: Command -> Config -> IO Config
 handleCommand (AddCmd (AddOptions games))   config = addGames config games
