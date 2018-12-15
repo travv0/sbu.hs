@@ -3,6 +3,7 @@ module Options
   , Command(..)
   , BackupOptions(..)
   , AddOptions(..)
+  , InfoOptions(..)
   , opts
   )
 where

@@ -66,8 +66,9 @@ writeConfig :: FilePath -> Config -> IO ()
 writeConfig path config = BS.writeFile path $ encode config
 
 handleCommand :: Command -> Config -> IO Config
-handleCommand (AddCmd (AddOptions games)) config = addGames config games
-handleCommand (ListCmd                  ) config = listGames config
+handleCommand (AddCmd (AddOptions games)  ) config = addGames config games
+handleCommand (ListCmd                    ) config = listGames config
+handleCommand (InfoCmd (InfoOptions games)) config = infoGames config games
 handleCommand command config =
   error
     $  "Command not yet implemented.  Some potentially useful info:\n"
@@ -82,7 +83,14 @@ addGames config games = do
 
 listGames :: Config -> IO Config
 listGames config = do
-  putStrLn $ intercalate "\n" $ sort $ map gameName $ configGames config
+  putStrLn $ intercalate "\n" $ gameNames config
+  return config
+
+infoGames :: Config -> [String] -> IO Config
+infoGames config games = do
+  if null games
+    then mapM_ (infoGame config) $ gameNames config
+    else mapM_ (infoGame config) games
   return config
 
 promptAddGame :: String -> IO Game
@@ -98,3 +106,25 @@ promptAddGame name = do
       hFlush stdout
       glob <- getLine
       return $ Game name path $ if null glob then "*" else glob
+
+infoGame :: Config -> String -> IO ()
+infoGame config gName = do
+  let matchingGames = filter (\g -> gameName g == gName) $ configGames config
+  if null matchingGames
+    then putStrLn $ "No game matching the name " ++ gName
+    else do
+      let game = head matchingGames
+      putStrLn
+        $  "Game name: "
+        ++ gameName game
+        ++ "\n"
+        ++ "Game save path: "
+        ++ gamePath game
+        ++ "\n"
+        ++ "Game save glob: "
+        ++ gameGlob game
+        ++ "\n"
+
+gameNames :: Config -> [String]
+gameNames config = sort $ map gameName $ configGames config
+
