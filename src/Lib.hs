@@ -66,9 +66,8 @@ writeConfig :: FilePath -> Config -> IO ()
 writeConfig path config = BS.writeFile path $ encode config
 
 handleCommand :: Command -> Config -> IO Config
-handleCommand (AddCmd (AddOptions games)) config = do
-  newGames <- addGames config games
-  return $ config { configGames = newGames `union` configGames config }
+handleCommand (AddCmd (AddOptions games)) config = addGames config games
+handleCommand (ListCmd                  ) config = listGames config
 handleCommand command config =
   error
     $  "Command not yet implemented.  Some potentially useful info:\n"
@@ -76,8 +75,15 @@ handleCommand command config =
     ++ "\n"
     ++ show config
 
-addGames :: Config -> [String] -> IO [Game]
-addGames config games = sequence (map promptAddGame games)
+addGames :: Config -> [String] -> IO Config
+addGames config games = do
+  newGames <- sequence (map promptAddGame games)
+  return $ config { configGames = newGames `union` configGames config }
+
+listGames :: Config -> IO Config
+listGames config = do
+  putStrLn $ intercalate "\n" $ sort $ map gameName $ configGames config
+  return config
 
 promptAddGame :: String -> IO Game
 promptAddGame name = do
