@@ -62,7 +62,7 @@ readConfig path = do
     then do
       config <- BS.readFile path
       return $ decode config
-    else return $ Left $ "Error optining file at `" ++ path ++ "'."
+    else return $ Left $ "Error opening file at `" ++ path ++ "'."
 
 writeConfig :: FilePath -> Config -> IO ()
 writeConfig path config = BS.writeFile path $ encode config
@@ -73,6 +73,10 @@ handleCommand ListCmd                       config = listGames config
 handleCommand (InfoCmd (InfoOptions games)) config = infoGames config games
 handleCommand (RemoveCmd (RemoveOptions games yes)) config =
   removeGames config yes games
+handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) config =
+  editGame config game mNewName mNewPath mNewGlob
+handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) config
+  = editConfig config mBackupDir mBackupFreq mBackupsToKeep
 handleCommand command config =
   error
     $  "Command not yet implemented.  Some potentially useful info:\n"
@@ -110,6 +114,28 @@ infoGames config games = do
     then mapM_ (infoGame config) $ gameNames config
     else mapM_ (infoGame config) games
   return config
+
+editGame
+  :: Config
+  -> String
+  -> Maybe String
+  -> Maybe FilePath
+  -> Maybe String
+  -> IO Config
+editGame config gName mNewName mNewPath mNewGlob =
+  if all isNothing [mNewName, mNewPath, mNewGlob]
+    then do
+      putStrLn "One or more of --name, --path, or --glob must be provided."
+      return config
+    else do
+      let game = case filter ((== gName) . gameName) (configGames config) of
+            []      -> Nothing
+            (g : _) -> Just g
+      return config
+
+editConfig
+  :: Config -> Maybe FilePath -> Maybe Integer -> Maybe Integer -> IO Config
+editConfig config mBackupDir mBackupFreq mBackupsToKeep = undefined
 
 promptAddGame :: String -> IO Game
 promptAddGame name = do
