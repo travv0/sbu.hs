@@ -109,7 +109,7 @@ handleCommand command config =
 
 addGames :: Config -> [String] -> IO Config
 addGames config games = do
-  newGames <- mapM promptAddGame games
+  newGames <- map fromJust . filter isJust <$> mapM (promptAddGame config) games
   return $ config { configGames = newGames `union` configGames config }
 
 listGames :: Config -> IO Config
@@ -151,27 +151,40 @@ editGame config gName mNewName mNewPath mNewGlob =
       putStrLn "One or more of --name, --path, or --glob must be provided."
       return config
     else do
-      let i = fromMaybe 0 $ elemIndex gName (map gameName $ configGames config)
-          (front, game : back) = splitAt i $ configGames config
-          newName              = fromMaybe (gameName game) mNewName
-          newPath              = fromMaybe (gamePath game) mNewPath
-          newGlob              = fromMaybe (gameGlob game) mNewGlob
-          editedGame =
-            game { gameName = newName, gamePath = newPath, gameGlob = newGlob }
-      when (isJust mNewName) $ putStrLn $ "Name: " ++ gName ++ " -> " ++ newName
-      when (isJust mNewPath)
-        $  putStrLn
-        $  "Save path: "
-        ++ gamePath game
-        ++ " -> "
-        ++ newPath
-      when (isJust mNewGlob)
-        $  putStrLn
-        $  "Save glob: "
-        ++ gameGlob game
-        ++ " -> "
-        ++ newGlob
-      return config { configGames = front ++ (editedGame : back) }
+      let i          = elemIndex gName (map gameName $ configGames config)
+          mSplitList = splitAt <$> i <*> pure (configGames config)
+      case mSplitList of
+        Nothing -> do
+          warnMissingGames config [gName]
+          return config
+        Just (front, game : back) -> do
+          let
+            newName    = fromMaybe (gameName game) mNewName
+            newPath    = fromMaybe (gamePath game) mNewPath
+            newGlob    = fromMaybe (gameGlob game) mNewGlob
+            editedGame = game { gameName = newName
+                              , gamePath = newPath
+                              , gameGlob = newGlob
+                              }
+          when (isJust mNewName)
+            $  putStrLn
+            $  "Name: "
+            ++ gName
+            ++ " -> "
+            ++ newName
+          when (isJust mNewPath)
+            $  putStrLn
+            $  "Save path: "
+            ++ gamePath game
+            ++ " -> "
+            ++ newPath
+          when (isJust mNewGlob)
+            $  putStrLn
+            $  "Save glob: "
+            ++ gameGlob game
+            ++ " -> "
+            ++ newGlob
+          return config { configGames = front ++ (editedGame : back) }
 
 editConfig
   :: Config -> Maybe FilePath -> Maybe Integer -> Maybe Integer -> IO Config
@@ -198,19 +211,25 @@ editConfig config mBackupDir mBackupFreq mBackupsToKeep = do
 backupGames :: Config -> Bool -> [String] -> IO Config
 backupGames config loop games = undefined
 
-promptAddGame :: String -> IO Game
-promptAddGame name = do
-  putStr $ "Enter save path for " ++ name ++ ": "
-  hFlush stdout
-  path <- getLine
-  if null path
-    then promptAddGame name
+promptAddGame :: Config -> String -> IO (Maybe Game)
+promptAddGame config name = do
+  if name `elem` map gameName (configGames config)
+    then do
+      putStrLn $ "Warning: Game with the name " ++ name ++ " already exists"
+      return Nothing
     else do
-      putStr
-        "Enter pattern to match files/folders on for backup (leave blank to backup everything in save path): "
+      putStr $ "Enter save path for " ++ name ++ ": "
       hFlush stdout
-      glob <- getLine
-      return $ Game name path glob
+      path <- getLine
+      if null path
+        then promptAddGame config name
+        else do
+          putStr
+            "Enter pattern to match files/folders on for backup (leave blank to backup everything in save path): "
+          hFlush stdout
+          glob <- getLine
+          putStrLn ""
+          return $ Just $ Game name path glob
 
 infoGame :: Config -> String -> IO ()
 infoGame config gName = do
