@@ -31,6 +31,7 @@ handleOptions (SbuOptions configPath command) = do
     Left  _ -> do
       c <- defaultConfig
       printCreatedConfigMsg path c
+      createDirectoryIfMissing True $ takeDirectory path
       writeConfig path c
       handleCommand command c
 
