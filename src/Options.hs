@@ -11,10 +11,9 @@ import           Control.Monad.IO.Class
 import           Data.String                    ( IsString )
 
 import           Options.Applicative     hiding ( infoParser )
-import           Path
 
 data SbuOptions = SbuOptions
-  { sbuConfigPath :: Maybe (Path Abs File)
+  { sbuConfigPath :: Maybe FilePath
   , sbuCommand :: Command
   } deriving (Show)
 
@@ -49,12 +48,12 @@ data RemoveOptions = RemoveOptions
 data EditOptions = EditOptions
   { editGame :: String
   , editName :: Maybe String
-  , editPath :: Maybe (Path Abs Dir)
+  , editPath :: Maybe FilePath
   , editGlob :: Maybe String
   } deriving (Show)
 
 data ConfigOptions = ConfigOptions
-  { configOptBackupDir :: Maybe (Path Abs Dir)
+  { configOptBackupDir :: Maybe FilePath
   , configOptBackupFreq :: Maybe Integer
   , configOptBackupsToKeep :: Maybe Integer
   }
@@ -124,7 +123,7 @@ editParser =
               <> help "New name"
               )
         <*> option
-              maybeDir
+              maybeStr
               (  long "path"
               <> short 'p'
               <> metavar "NEW_SAVE_PATH"
@@ -146,7 +145,7 @@ configParser =
   ConfigCmd
     <$> (   ConfigOptions
         <$> option
-              maybeDir
+              maybeStr
               (  long "path"
               <> short 'p'
               <> metavar "BACKUP_PATH"
@@ -181,7 +180,7 @@ configParser =
 opts =
   SbuOptions
     <$> option
-          maybeFile
+          maybeStr
           (  long "config"
           <> short 'c'
           <> metavar "CONFIG_FILE"
@@ -223,16 +222,6 @@ commands =
 
 maybeStr :: IsString a => ReadM (Maybe a)
 maybeStr = Just <$> str
-
-maybeDir :: ReadM (Maybe (Path Abs Dir))
-maybeDir = eitherReader $ \arg -> case parseAbsDir arg of
-  Right r -> return $ Just r
-  _       -> Left $ "cannot parse value `" ++ arg ++ "'.  Path must be absolute"
-
-maybeFile :: ReadM (Maybe (Path Abs File))
-maybeFile = eitherReader $ \arg -> case parseAbsFile arg of
-  Right r -> return $ Just r
-  _       -> Left $ "cannot parse value `" ++ arg ++ "'.  Path must be absolute"
 
 maybeAuto :: Read a => ReadM (Maybe a)
 maybeAuto = eitherReader $ \arg -> case reads arg of
