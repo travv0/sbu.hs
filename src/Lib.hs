@@ -62,7 +62,7 @@ readConfig path = do
     then do
       config <- BS.readFile path
       return $ decode config
-    else return $ Left $ "Error optining file at `" ++ path ++ "'."
+    else return $ Left $ "Error opening file at `" ++ path ++ "'."
 
 writeConfig :: FilePath -> Config -> IO ()
 writeConfig path config = BS.writeFile path $ encode config
@@ -73,6 +73,12 @@ handleCommand ListCmd                       config = listGames config
 handleCommand (InfoCmd (InfoOptions games)) config = infoGames config games
 handleCommand (RemoveCmd (RemoveOptions games yes)) config =
   removeGames config yes games
+handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) config =
+  editGame config game mNewName mNewPath mNewGlob
+handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) config
+  = editConfig config mBackupDir mBackupFreq mBackupsToKeep
+handleCommand (BackupCmd (BackupOptions games loop)) config =
+  backupGames config loop games
 handleCommand command config =
   error
     $  "Command not yet implemented.  Some potentially useful info:\n"
@@ -111,6 +117,48 @@ infoGames config games = do
     else mapM_ (infoGame config) games
   return config
 
+editGame
+  :: Config
+  -> String
+  -> Maybe String
+  -> Maybe FilePath
+  -> Maybe String
+  -> IO Config
+editGame config gName mNewName mNewPath mNewGlob =
+  if all isNothing [mNewName, mNewPath, mNewGlob]
+    then do
+      putStrLn "One or more of --name, --path, or --glob must be provided."
+      return config
+    else do
+      let i = fromMaybe 0 $ elemIndex gName (map gameName $ configGames config)
+          (front, game : back) = splitAt i $ configGames config
+          newName              = fromMaybe (gameName game) mNewName
+          newPath              = fromMaybe (gamePath game) mNewPath
+          newGlob              = fromMaybe (gameGlob game) mNewGlob
+          editedGame =
+            game { gameName = newName, gamePath = newPath, gameGlob = newGlob }
+      when (isJust mNewName) $ putStrLn $ "Name: " ++ gName ++ " -> " ++ newName
+      when (isJust mNewPath)
+        $  putStrLn
+        $  "Save path: "
+        ++ gamePath game
+        ++ " -> "
+        ++ newPath
+      when (isJust mNewGlob)
+        $  putStrLn
+        $  "Save glob: "
+        ++ gameGlob game
+        ++ " -> "
+        ++ newGlob
+      return config { configGames = front ++ (editedGame : back) }
+
+editConfig
+  :: Config -> Maybe FilePath -> Maybe Integer -> Maybe Integer -> IO Config
+editConfig config mBackupDir mBackupFreq mBackupsToKeep = undefined
+
+backupGames :: Config -> Bool -> [String] -> IO Config
+backupGames config loop games = undefined
+
 promptAddGame :: String -> IO Game
 promptAddGame name = do
   putStr $ "Enter save path for " ++ name ++ ": "
@@ -123,7 +171,7 @@ promptAddGame name = do
         "Enter pattern to match files/folders on for backup (leave blank to backup everything in save path): "
       hFlush stdout
       glob <- getLine
-      return $ Game name path $ if null glob then "*" else glob
+      return $ Game name path glob
 
 infoGame :: Config -> String -> IO ()
 infoGame config gName = do
@@ -139,9 +187,9 @@ infoGame config gName = do
         ++ "Save path: "
         ++ gamePath game
         ++ "\n"
-        ++ if gameGlob game /= "*"
-             then "Save glob: " ++ gameGlob game ++ "\n"
-             else ""
+        ++ if null (gameGlob game)
+             then ""
+             else "Save glob: " ++ gameGlob game ++ "\n"
 
 gameNames :: Config -> [String]
 gameNames config = sort $ map gameName $ configGames config
