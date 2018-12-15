@@ -154,7 +154,25 @@ editGame config gName mNewName mNewPath mNewGlob =
 
 editConfig
   :: Config -> Maybe FilePath -> Maybe Integer -> Maybe Integer -> IO Config
-editConfig config mBackupDir mBackupFreq mBackupsToKeep = undefined
+editConfig config mBackupDir mBackupFreq mBackupsToKeep = do
+  let newBackupDir     = fromMaybe (configBackupDir config) mBackupDir
+      newBackupFreq    = fromMaybe (configBackupFreq config) mBackupFreq
+      newBackupsToKeep = fromMaybe (configBackupsToKeep config) mBackupsToKeep
+  putStrLn $ "Backup path: " ++ configBackupDir config ++ if isJust mBackupDir
+    then " -> " ++ newBackupDir
+    else ""
+  putStrLn
+    $  "Backup frequency (in minutes): "
+    ++ show (configBackupFreq config)
+    ++ if isJust mBackupFreq then " -> " ++ show newBackupFreq else ""
+  putStrLn
+    $  "Number of backups to keep: "
+    ++ show (configBackupsToKeep config)
+    ++ if isJust mBackupsToKeep then " -> " ++ show newBackupsToKeep else ""
+  return config { configBackupDir     = newBackupDir
+                , configBackupFreq    = newBackupFreq
+                , configBackupsToKeep = newBackupsToKeep
+                }
 
 backupGames :: Config -> Bool -> [String] -> IO Config
 backupGames config loop games = undefined
