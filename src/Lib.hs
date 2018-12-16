@@ -198,6 +198,14 @@ editGame config gName mNewName mNewPath mNewGlob =
             ++ gameGlob game
             ++ " -> "
             ++ newGlob
+
+          backupDirExists <-
+            doesDirectoryExist $ configBackupDir config </> gName
+          when (isJust mNewName && backupDirExists) $ do
+            putStrLn "Game name changed, renaming backup directory..."
+            renameDirectory (configBackupDir config </> gName)
+                            (configBackupDir config </> newName)
+
           return config { configGames = front ++ (editedGame : back) }
 
 editConfig
