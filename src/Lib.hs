@@ -119,9 +119,11 @@ listGames config = do
 
 removeGames :: Config -> Bool -> [String] -> IO Config
 removeGames config yes games = if yes
-  then return $ config
-    { configGames = filter ((`elem` games) . gameName) $ configGames config
-    }
+  then do
+    putStrLn $ "Removed the following games:\n" ++ intercalate "\n" games
+    return $ config
+      { configGames = filter ((`notElem` games) . gameName) $ configGames config
+      }
   else do
     warnMissingGames config games
     gamesToRemove <-
@@ -214,9 +216,9 @@ backupGames config loop games = do
   return config
 
 backupGame :: Config -> String -> IO ()
-backupGame config game = if game `notElem` map gameName (configGames config)
-  then warnMissingGames config [game]
-  else putStrLn $ "Backing up " ++ game
+backupGame config game = do
+  warnMissingGames config [game]
+  putStrLn $ "Backing up " ++ game
 
 promptAddGame :: Config -> String -> IO (Maybe Game)
 promptAddGame config name = do
@@ -242,7 +244,7 @@ infoGame :: Config -> String -> IO ()
 infoGame config gName = do
   let matchingGames = filter (\g -> gameName g == gName) $ configGames config
   if null matchingGames
-    then putStrLn $ "No game matching the name " ++ gName
+    then warnMissingGames config [gName]
     else do
       let game = head matchingGames
       putStrLn
@@ -264,7 +266,9 @@ promptRemove game = do
   putStr $ "Permanently delete " ++ gameName game ++ "? (y/N) "
   hFlush stdout
   input <- getLine
-  return $ toLower (head $ if null input then "n" else input) == 'y'
+  let rem = toLower (head $ if null input then "n" else input) == 'y'
+  when rem $ putStrLn $ "Removed " ++ gameName game
+  return rem
 
 warnMissingGames :: Config -> [String] -> IO ()
 warnMissingGames config games = mapM_
