@@ -98,14 +98,14 @@ handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) config =
   editGame config game mNewName mNewPath mNewGlob
 handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) config
   = editConfig config mBackupDir mBackupFreq mBackupsToKeep
+handleCommand (ConfigCmd ConfigDefaults) config = do
+  dc <- defaultConfig
+  editConfig config
+             (Just $ configBackupDir dc)
+             (Just $ configBackupFreq dc)
+             (Just $ configBackupsToKeep dc)
 handleCommand (BackupCmd (BackupOptions games loop)) config =
   backupGames config loop games
-handleCommand command config =
-  error
-    $  "Command not yet implemented.  Some potentially useful info:\n"
-    ++ show command
-    ++ "\n"
-    ++ show config
 
 addGames :: Config -> [String] -> IO Config
 addGames config games = do
@@ -209,7 +209,14 @@ editConfig config mBackupDir mBackupFreq mBackupsToKeep = do
                 }
 
 backupGames :: Config -> Bool -> [String] -> IO Config
-backupGames config loop games = undefined
+backupGames config loop games = do
+  mapM_ (backupGame config) $ if null games then gameNames config else games
+  return config
+
+backupGame :: Config -> String -> IO ()
+backupGame config game = if game `notElem` map gameName (configGames config)
+  then warnMissingGames config [game]
+  else putStrLn $ "Backing up " ++ game
 
 promptAddGame :: Config -> String -> IO (Maybe Game)
 promptAddGame config name = do
