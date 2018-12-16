@@ -10,13 +10,16 @@ import           Data.List
 import           Data.Maybe
 import           Data.Serialize
 import           Data.Time
-import           Data.Time.Format
 import           System.Directory
 import           System.FilePath
+import           System.FilePath.Glob
 import           System.IO
 
 import           Options
 import           Types
+
+defaultGlob :: String
+defaultGlob = "**/*"
 
 defaultConfigPath :: IO FilePath
 defaultConfigPath = do
@@ -165,7 +168,8 @@ editGame config gName mNewName mNewPath mNewGlob =
           let
             newName    = fromMaybe (gameName game) mNewName
             newPath    = fromMaybe (gamePath game) mNewPath
-            newGlob    = fromMaybe (gameGlob game) mNewGlob
+            newGlob'   = fromMaybe (gameGlob game) mNewGlob
+            newGlob    = if null newGlob' then defaultGlob else newGlob'
             editedGame = game { gameName = newName
                               , gamePath = newPath
                               , gameGlob = newGlob
@@ -221,6 +225,8 @@ backupGame :: Config -> String -> IO ()
 backupGame config gName = case getGameByName config gName of
   Just game -> do
     anyBackedUp <- backupFiles (gamePath game)
+                               (gameGlob game)
+                               (gamePath game)
                                (configBackupDir config </> gName)
     now <- utcToLocalTime <$> getCurrentTimeZone <*> getCurrentTime
     when anyBackedUp
@@ -231,17 +237,18 @@ backupGame config gName = case getGameByName config gName of
       ++ formatTime defaultTimeLocale "%c" now
   Nothing -> warnMissingGames config [gName]
 
-backupFiles :: FilePath -> FilePath -> IO Bool
-backupFiles from to = do
+backupFiles :: FilePath -> String -> FilePath -> FilePath -> IO Bool
+backupFiles basePath glob from to = do
   files <- getDirectoryContents from
   createDirectoryIfMissing True to
-  or <$> mapM (\f -> backupFile (from </> f) (to </> f))
+  or <$> mapM (\f -> backupFile basePath glob (from </> f) (to </> f))
               (filter (\f -> f /= "." && f /= "..") files)
-backupFile :: FilePath -> FilePath -> IO Bool
-backupFile from to = do
+
+backupFile :: FilePath -> String -> FilePath -> FilePath -> IO Bool
+backupFile basePath glob from to = do
   isDirectory <- doesDirectoryExist from
   if isDirectory
-    then backupFiles from to
+    then backupFiles basePath glob from to
     else do
       backupExists <- doesFileExist to
       fromModTime  <- getModificationTime from
@@ -256,10 +263,12 @@ backupFile from to = do
           else return False
         Nothing -> copy
  where
-  copy = do
-    putStrLn $ from ++ " ==>\n\t\t" ++ to
-    copyFileWithMetadata from to
-    return True
+  copy = if match (compile $ addTrailingPathSeparator basePath ++ glob) from
+    then do
+      putStrLn $ from ++ " ==>\n\t\t" ++ to
+      copyFileWithMetadata from to
+      return True
+    else return False
 
 formatModifiedTime :: UTCTime -> String
 formatModifiedTime = formatTime defaultTimeLocale "%Y_%m_%d_%H_%M_%S"
@@ -281,7 +290,7 @@ promptAddGame config name = case getGameByName config name of
         hFlush stdout
         glob <- getLine
         putStrLn ""
-        return $ Just $ Game name path glob
+        return $ Just $ Game name path $ if null glob then defaultGlob else glob
 
 infoGame :: Config -> String -> IO ()
 infoGame config gName = do
@@ -297,7 +306,7 @@ infoGame config gName = do
         ++ "Save path: "
         ++ gamePath game
         ++ "\n"
-        ++ if null (gameGlob game)
+        ++ if gameGlob game == defaultGlob
              then ""
              else "Save glob: " ++ gameGlob game ++ "\n"
 

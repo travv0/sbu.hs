@@ -11,7 +11,6 @@ module Options
   )
 where
 
-import           Control.Monad.IO.Class
 import           Data.String                    ( IsString )
 
 import           Options.Applicative     hiding ( infoParser )
@@ -181,6 +180,7 @@ configParser =
               )
         )
 
+opts :: Parser SbuOptions
 opts =
   SbuOptions
     <$> option
@@ -193,6 +193,7 @@ opts =
           )
     <*> commands
 
+commands :: Parser Command
 commands =
   hsubparser
       (  command

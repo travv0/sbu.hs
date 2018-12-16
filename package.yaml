@@ -27,6 +27,7 @@ dependencies:
 - cereal
 - bytestring
 - time
+- Glob
 
 library:
   source-dirs: src
