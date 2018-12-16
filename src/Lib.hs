@@ -9,6 +9,8 @@ import           Data.Char
 import           Data.List
 import           Data.Maybe
 import           Data.Serialize
+import           Data.Time.Clock
+import           Data.Time.Format
 import           System.Directory
 import           System.FilePath
 import           System.IO
@@ -217,11 +219,33 @@ backupGames config loop games = do
 
 backupGame :: Config -> String -> IO ()
 backupGame config gName = case getGameByName config gName of
-  Just game -> backupFiles (gamePath game) (configBackupDir config)
+  Just game -> backupFiles (gamePath game) (configBackupDir config </> gName)
   Nothing   -> warnMissingGames config [gName]
 
 backupFiles :: FilePath -> FilePath -> IO ()
-backupFiles from to = undefined
+backupFiles from to = do
+  files <- getDirectoryContents from
+  createDirectoryIfMissing True to
+  mapM_ (\f -> backupFile (from </> f) (to </> f))
+    $ filter (\f -> f /= "." && f /= "..") files
+
+backupFile :: FilePath -> FilePath -> IO ()
+backupFile from to = do
+  isDirectory <- doesDirectoryExist from
+  if isDirectory
+    then backupFiles from to
+    else do
+      backupExists <- doesFileExist to
+      when backupExists $ do
+        fromModTime <- getModificationTime from
+        toModTime   <- getModificationTime to
+        when (fromModTime /= toModTime) $ do
+          renameFile to $ to <.> "bak" <.> formatModifiedTime toModTime
+          putStrLn $ from ++ " ==>\n\t\t" ++ to
+          copyFileWithMetadata from to
+
+formatModifiedTime :: UTCTime -> String
+formatModifiedTime = formatTime defaultTimeLocale "%Y_%m_%d_%H_%M_%S"
 
 promptAddGame :: Config -> String -> IO (Maybe Game)
 promptAddGame config name = case getGameByName config name of
@@ -281,11 +305,6 @@ warnMissingGames config = mapM_
       ++ g
       ++ "'"
   )
-
-getAbsDirectoryContents :: FilePath -> IO [FilePath]
-getAbsDirectoryContents path = do
-  paths <- getDirectoryContents path
-  return $ map (path </>) paths
 
 getGameByName :: Config -> String -> Maybe Game
 getGameByName config name =
