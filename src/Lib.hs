@@ -9,7 +9,7 @@ import           Data.Char
 import           Data.List
 import           Data.Maybe
 import           Data.Serialize
-import           Data.Time.Clock
+import           Data.Time
 import           Data.Time.Format
 import           System.Directory
 import           System.FilePath
@@ -219,30 +219,47 @@ backupGames config loop games = do
 
 backupGame :: Config -> String -> IO ()
 backupGame config gName = case getGameByName config gName of
-  Just game -> backupFiles (gamePath game) (configBackupDir config </> gName)
-  Nothing   -> warnMissingGames config [gName]
+  Just game -> do
+    anyBackedUp <- backupFiles (gamePath game)
+                               (configBackupDir config </> gName)
+    now <- utcToLocalTime <$> getCurrentTimeZone <*> getCurrentTime
+    when anyBackedUp
+      $  putStrLn
+      $  "Finished backing up "
+      ++ gName
+      ++ " on "
+      ++ formatTime defaultTimeLocale "%c" now
+  Nothing -> warnMissingGames config [gName]
 
-backupFiles :: FilePath -> FilePath -> IO ()
+backupFiles :: FilePath -> FilePath -> IO Bool
 backupFiles from to = do
   files <- getDirectoryContents from
   createDirectoryIfMissing True to
-  mapM_ (\f -> backupFile (from </> f) (to </> f))
-    $ filter (\f -> f /= "." && f /= "..") files
-
-backupFile :: FilePath -> FilePath -> IO ()
+  or <$> mapM (\f -> backupFile (from </> f) (to </> f))
+              (filter (\f -> f /= "." && f /= "..") files)
+backupFile :: FilePath -> FilePath -> IO Bool
 backupFile from to = do
   isDirectory <- doesDirectoryExist from
   if isDirectory
     then backupFiles from to
     else do
       backupExists <- doesFileExist to
-      when backupExists $ do
-        fromModTime <- getModificationTime from
-        toModTime   <- getModificationTime to
-        when (fromModTime /= toModTime) $ do
-          renameFile to $ to <.> "bak" <.> formatModifiedTime toModTime
-          putStrLn $ from ++ " ==>\n\t\t" ++ to
-          copyFileWithMetadata from to
+      fromModTime  <- getModificationTime from
+      mToModTime   <- if backupExists
+        then Just <$> getModificationTime to
+        else return Nothing
+      case mToModTime of
+        Just toModTime -> if fromModTime /= toModTime
+          then do
+            renameFile to $ to <.> "bak" <.> formatModifiedTime toModTime
+            copy
+          else return False
+        Nothing -> copy
+ where
+  copy = do
+    putStrLn $ from ++ " ==>\n\t\t" ++ to
+    copyFileWithMetadata from to
+    return True
 
 formatModifiedTime :: UTCTime -> String
 formatModifiedTime = formatTime defaultTimeLocale "%Y_%m_%d_%H_%M_%S"
