@@ -28,6 +28,7 @@ dependencies:
 - bytestring
 - time
 - Glob
+- monadlist
 
 library:
   source-dirs: src

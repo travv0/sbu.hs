@@ -5,6 +5,7 @@ where
 
 import           Control.Concurrent             ( threadDelay )
 import           Control.Monad
+import           Control.Monad.ListM            ( sortByM )
 import qualified Data.ByteString               as BS
 import           Data.Char
 import           Data.List
@@ -15,6 +16,7 @@ import           System.Directory
 import           System.FilePath
 import           System.FilePath.Glob           ( match
                                                 , compile
+                                                , globDir1
                                                 )
 import           System.IO
 
@@ -234,7 +236,8 @@ backupGame config gName = do
   startTime <- getCurrentTime
   case getGameByName config gName of
     Just game -> do
-      anyBackedUp <- backupFiles (gamePath game)
+      anyBackedUp <- backupFiles config
+                                 (gamePath game)
                                  (gameGlob game)
                                  (gamePath game)
                                  (configBackupDir config </> gName)
@@ -251,18 +254,17 @@ backupGame config gName = do
         ++ "\n"
     Nothing -> warnMissingGames config [gName]
 
-backupFiles :: FilePath -> String -> FilePath -> FilePath -> IO Bool
-backupFiles basePath glob from to = do
+backupFiles :: Config -> FilePath -> String -> FilePath -> FilePath -> IO Bool
+backupFiles config basePath glob from to = do
   files <- getDirectoryContents from
-  createDirectoryIfMissing True to
-  or <$> mapM (\f -> backupFile basePath glob (from </> f) (to </> f))
+  or <$> mapM (\f -> backupFile config basePath glob (from </> f) (to </> f))
               (filter (\f -> f /= "." && f /= "..") files)
 
-backupFile :: FilePath -> String -> FilePath -> FilePath -> IO Bool
-backupFile basePath glob from to = do
+backupFile :: Config -> FilePath -> String -> FilePath -> FilePath -> IO Bool
+backupFile config basePath glob from to = do
   isDirectory <- doesDirectoryExist from
   if isDirectory
-    then backupFiles basePath glob from to
+    then backupFiles config basePath glob from to
     else do
       backupExists <- doesFileExist to
       fromModTime  <- getModificationTime from
@@ -273,16 +275,44 @@ backupFile basePath glob from to = do
         Just toModTime -> if fromModTime /= toModTime
           then do
             renameFile to $ to <.> "bak" <.> formatModifiedTime toModTime
-            copy
+            copyAndCleanup
           else return False
-        Nothing -> copy
+        Nothing -> copyAndCleanup
  where
-  copy = if match (compile $ addTrailingPathSeparator basePath ++ glob) from
-    then do
-      putStrLn $ from ++ " ==>\n\t\t" ++ to
-      copyFileWithMetadata from to
-      return True
-    else return False
+  copyAndCleanup =
+    if match (compile $ addTrailingPathSeparator basePath ++ glob) from
+      then do
+        createDirectoryIfMissing True $ dropFileName to
+        putStrLn $ from ++ " ==>\n\t\t" ++ to
+        copyFileWithMetadata from to
+        cleanupBackups config to
+        return True
+      else return False
+
+cleanupBackups :: Config -> FilePath -> IO ()
+cleanupBackups config backupPath = when (configBackupsToKeep config > 0) $ do
+  files <- (backupPath :) <$> globDir1
+    (compile
+    $ takeFileName backupPath
+    ++ ".bak.[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]"
+    )
+    (dropFileName backupPath)
+  when (toInteger (length files) > configBackupsToKeep config) $ do
+    sortedFiles <- sortByM
+      (\f1 f2 -> do
+        modTime1 <- getModificationTime f1
+        modTime2 <- getModificationTime f2
+        return $ modTime2 `compare` modTime1
+      )
+      files
+    let filesToDelete =
+          drop (fromIntegral $ configBackupsToKeep config) sortedFiles
+    mapM_
+      (\f -> do
+        putStrLn $ "Deleting " ++ f
+        removeFile f
+      )
+      filesToDelete
 
 formatModifiedTime :: UTCTime -> String
 formatModifiedTime = formatTime defaultTimeLocale "%Y_%m_%d_%H_%M_%S"
