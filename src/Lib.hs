@@ -3,6 +3,7 @@ module Lib
   )
 where
 
+import           Control.Concurrent             ( threadDelay )
 import           Control.Monad
 import qualified Data.ByteString               as BS
 import           Data.Char
@@ -12,7 +13,9 @@ import           Data.Serialize
 import           Data.Time
 import           System.Directory
 import           System.FilePath
-import           System.FilePath.Glob
+import           System.FilePath.Glob           ( match
+                                                , compile
+                                                )
 import           System.IO
 
 import           Options
@@ -164,6 +167,7 @@ editGame config gName mNewName mNewPath mNewGlob =
         Nothing -> do
           warnMissingGames config [gName]
           return config
+        Just (_    , []         ) -> error "Couldn't find game in list"
         Just (front, game : back) -> do
           let
             newName    = fromMaybe (gameName game) mNewName
@@ -219,23 +223,33 @@ editConfig config mBackupDir mBackupFreq mBackupsToKeep = do
 backupGames :: Config -> Bool -> [String] -> IO Config
 backupGames config loop games = do
   mapM_ (backupGame config) $ if null games then gameNames config else games
-  return config
+  if loop
+    then do
+      threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
+      backupGames config loop games
+    else return config
 
 backupGame :: Config -> String -> IO ()
-backupGame config gName = case getGameByName config gName of
-  Just game -> do
-    anyBackedUp <- backupFiles (gamePath game)
-                               (gameGlob game)
-                               (gamePath game)
-                               (configBackupDir config </> gName)
-    now <- utcToLocalTime <$> getCurrentTimeZone <*> getCurrentTime
-    when anyBackedUp
-      $  putStrLn
-      $  "Finished backing up "
-      ++ gName
-      ++ " on "
-      ++ formatTime defaultTimeLocale "%c" now
-  Nothing -> warnMissingGames config [gName]
+backupGame config gName = do
+  startTime <- getCurrentTime
+  case getGameByName config gName of
+    Just game -> do
+      anyBackedUp <- backupFiles (gamePath game)
+                                 (gameGlob game)
+                                 (gamePath game)
+                                 (configBackupDir config </> gName)
+      now <- getCurrentTime
+      tz  <- getCurrentTimeZone
+      when anyBackedUp
+        $  putStrLn
+        $  "Finished backing up "
+        ++ gName
+        ++ " in "
+        ++ show (diffUTCTime now startTime)
+        ++ " on "
+        ++ formatTime defaultTimeLocale "%c" (utcToLocalTime tz now)
+        ++ "\n"
+    Nothing -> warnMissingGames config [gName]
 
 backupFiles :: FilePath -> String -> FilePath -> FilePath -> IO Bool
 backupFiles basePath glob from to = do
@@ -318,9 +332,9 @@ promptRemove game = do
   putStr $ "Permanently delete " ++ gameName game ++ "? (y/N) "
   hFlush stdout
   input <- getLine
-  let rem = toLower (head $ if null input then "n" else input) == 'y'
-  when rem $ putStrLn $ "Removed " ++ gameName game
-  return rem
+  let rm = toLower (head $ if null input then "n" else input) == 'y'
+  when rm $ putStrLn $ "Removed " ++ gameName game
+  return rm
 
 warnMissingGames :: Config -> [String] -> IO ()
 warnMissingGames config = mapM_
