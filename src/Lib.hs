@@ -38,18 +38,18 @@ handleOptions (SbuOptions configPath command) = do
       if backupExists
         then do
           putStrLn
-            $ "Error reading config file, attempting to read from backup..."
+            "Error reading config file, attempting to read from backup..."
           backupConfig <- BS.readFile backupPath
           case decode backupConfig of
             Right c -> handleCommand command c >>= writeConfig path
-            Left  _ -> do
-              c <- defaultConfig
-              createDefaultConfig c path
-              handleCommand command c >>= writeConfig path
-        else do
-          c <- defaultConfig
-          createDefaultConfig c path
-          handleCommand command c >>= writeConfig path
+            Left  _ -> handleWithNewConfig command path
+        else handleWithNewConfig command path
+
+handleWithNewConfig :: Command -> FilePath -> IO ()
+handleWithNewConfig command path = do
+  c <- defaultConfig
+  createDefaultConfig c path
+  handleCommand command c >>= writeConfig path
 
 createDefaultConfig :: Config -> FilePath -> IO ()
 createDefaultConfig config path = do
@@ -85,7 +85,7 @@ readConfig path = do
 writeConfig :: FilePath -> Config -> IO ()
 writeConfig path config = do
   configExists <- doesFileExist path
-  when (configExists) $ renameFile path $ path <.> "bak"
+  when configExists $ renameFile path $ path <.> "bak"
   BS.writeFile path $ encode config
 
 handleCommand :: Command -> Config -> IO Config
@@ -109,7 +109,7 @@ handleCommand (BackupCmd (BackupOptions games loop)) config =
 
 addGames :: Config -> [String] -> IO Config
 addGames config games = do
-  newGames <- map fromJust . filter isJust <$> mapM (promptAddGame config) games
+  newGames <- catMaybes <$> mapM (promptAddGame config) games
   return $ config { configGames = newGames `union` configGames config }
 
 listGames :: Config -> IO Config
@@ -216,29 +216,31 @@ backupGames config loop games = do
   return config
 
 backupGame :: Config -> String -> IO ()
-backupGame config game = do
-  warnMissingGames config [game]
-  putStrLn $ "Backing up " ++ game
+backupGame config gName = case getGameByName config gName of
+  Just game -> backupFiles (gamePath game) (configBackupDir config)
+  Nothing   -> warnMissingGames config [gName]
+
+backupFiles :: FilePath -> FilePath -> IO ()
+backupFiles from to = undefined
 
 promptAddGame :: Config -> String -> IO (Maybe Game)
-promptAddGame config name = do
-  if name `elem` map gameName (configGames config)
-    then do
-      putStrLn $ "Warning: Game with the name " ++ name ++ " already exists"
-      return Nothing
-    else do
-      putStr $ "Enter save path for " ++ name ++ ": "
-      hFlush stdout
-      path <- getLine
-      if null path
-        then promptAddGame config name
-        else do
-          putStr
-            "Enter pattern to match files/folders on for backup (leave blank to backup everything in save path): "
-          hFlush stdout
-          glob <- getLine
-          putStrLn ""
-          return $ Just $ Game name path glob
+promptAddGame config name = case getGameByName config name of
+  Just _ -> do
+    putStrLn $ "Warning: Game with the name " ++ name ++ " already exists"
+    return Nothing
+  Nothing -> do
+    putStr $ "Enter save path for " ++ name ++ ": "
+    hFlush stdout
+    path <- getLine
+    if null path
+      then promptAddGame config name
+      else do
+        putStr
+          "Enter pattern to match files/folders on for backup (leave blank to backup everything in save path): "
+        hFlush stdout
+        glob <- getLine
+        putStrLn ""
+        return $ Just $ Game name path glob
 
 infoGame :: Config -> String -> IO ()
 infoGame config gName = do
@@ -271,7 +273,7 @@ promptRemove game = do
   return rem
 
 warnMissingGames :: Config -> [String] -> IO ()
-warnMissingGames config games = mapM_
+warnMissingGames config = mapM_
   (\g ->
     when (g `notElem` map gameName (configGames config))
       $  putStrLn
@@ -279,4 +281,14 @@ warnMissingGames config games = mapM_
       ++ g
       ++ "'"
   )
-  games
+
+getAbsDirectoryContents :: FilePath -> IO [FilePath]
+getAbsDirectoryContents path = do
+  paths <- getDirectoryContents path
+  return $ map (path </>) paths
+
+getGameByName :: Config -> String -> Maybe Game
+getGameByName config name =
+  case filter (\g -> gameName g == name) $ configGames config of
+    []         -> Nothing
+    (game : _) -> Just game
