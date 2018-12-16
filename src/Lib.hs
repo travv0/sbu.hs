@@ -1,3 +1,5 @@
+{-# LANGUAGE MultiWayIf #-}
+
 module Lib
   ( handleOptions
   )
@@ -162,51 +164,62 @@ editGame config gName mNewName mNewPath mNewGlob =
     then do
       putStrLn "One or more of --name, --path, or --glob must be provided."
       return config
-    else do
-      let i          = elemIndex gName (map gameName $ configGames config)
-          mSplitList = splitAt <$> i <*> pure (configGames config)
-      case mSplitList of
-        Nothing -> do
-          warnMissingGames config [gName]
-          return config
-        Just (_    , []         ) -> error "Couldn't find game in list"
-        Just (front, game : back) -> do
-          let
-            newName    = fromMaybe (gameName game) mNewName
-            newPath    = fromMaybe (gamePath game) mNewPath
-            newGlob'   = fromMaybe (gameGlob game) mNewGlob
-            newGlob    = if null newGlob' then defaultGlob else newGlob'
-            editedGame = game { gameName = newName
-                              , gamePath = newPath
-                              , gameGlob = newGlob
-                              }
-          when (isJust mNewName)
-            $  putStrLn
-            $  "Name: "
-            ++ gName
-            ++ " -> "
-            ++ newName
-          when (isJust mNewPath)
-            $  putStrLn
-            $  "Save path: "
-            ++ gamePath game
-            ++ " -> "
-            ++ newPath
-          when (isJust mNewGlob)
-            $  putStrLn
-            $  "Save glob: "
-            ++ gameGlob game
-            ++ " -> "
-            ++ newGlob
+    else case getGameByName config gName of
+      Just _ -> do
+        putStrLn $ "Error: Game with the name " ++ gName ++ " already exists"
+        return config
+      Nothing -> do
+        let i          = elemIndex gName (map gameName $ configGames config)
+            mSplitList = splitAt <$> i <*> pure (configGames config)
+        case mSplitList of
+          Nothing -> do
+            warnMissingGames config [gName]
+            return config
+          Just (_    , []         ) -> error "Couldn't find game in list"
+          Just (front, game : back) -> do
+            let
+              newName    = fromMaybe (gameName game) mNewName
+              newPath    = fromMaybe (gamePath game) mNewPath
+              newGlob'   = fromMaybe (gameGlob game) mNewGlob
+              newGlob    = if null newGlob' then defaultGlob else newGlob'
+              editedGame = game { gameName = newName
+                                , gamePath = newPath
+                                , gameGlob = newGlob
+                                }
+            if isRelative newPath
+              then do
+                putStrLn
+                  $ "Error: Save path must be absolute, but relative path was supplied: "
+                  ++ newPath
+                return config
+              else do
+                when (isJust mNewName)
+                  $  putStrLn
+                  $  "Name: "
+                  ++ gName
+                  ++ " -> "
+                  ++ newName
+                when (isJust mNewPath)
+                  $  putStrLn
+                  $  "Save path: "
+                  ++ gamePath game
+                  ++ " -> "
+                  ++ newPath
+                when (isJust mNewGlob)
+                  $  putStrLn
+                  $  "Save glob: "
+                  ++ gameGlob game
+                  ++ " -> "
+                  ++ newGlob
 
-          backupDirExists <-
-            doesDirectoryExist $ configBackupDir config </> gName
-          when (isJust mNewName && backupDirExists) $ do
-            putStrLn "Game name changed, renaming backup directory..."
-            renameDirectory (configBackupDir config </> gName)
-                            (configBackupDir config </> newName)
+                backupDirExists <-
+                  doesDirectoryExist $ configBackupDir config </> gName
+                when (isJust mNewName && backupDirExists) $ do
+                  putStrLn "Game name changed, renaming backup directory..."
+                  renameDirectory (configBackupDir config </> gName)
+                                  (configBackupDir config </> newName)
 
-          return config { configGames = front ++ (editedGame : back) }
+                return config { configGames = front ++ (editedGame : back) }
 
 editConfig
   :: Config -> Maybe FilePath -> Maybe Integer -> Maybe Integer -> IO Config
@@ -214,21 +227,30 @@ editConfig config mBackupDir mBackupFreq mBackupsToKeep = do
   let newBackupDir     = fromMaybe (configBackupDir config) mBackupDir
       newBackupFreq    = fromMaybe (configBackupFreq config) mBackupFreq
       newBackupsToKeep = fromMaybe (configBackupsToKeep config) mBackupsToKeep
-  putStrLn $ "Backup path: " ++ configBackupDir config ++ if isJust mBackupDir
-    then " -> " ++ newBackupDir
-    else ""
-  putStrLn
-    $  "Backup frequency (in minutes): "
-    ++ show (configBackupFreq config)
-    ++ if isJust mBackupFreq then " -> " ++ show newBackupFreq else ""
-  putStrLn
-    $  "Number of backups to keep: "
-    ++ show (configBackupsToKeep config)
-    ++ if isJust mBackupsToKeep then " -> " ++ show newBackupsToKeep else ""
-  return config { configBackupDir     = newBackupDir
-                , configBackupFreq    = newBackupFreq
-                , configBackupsToKeep = newBackupsToKeep
-                }
+
+  if isRelative newBackupDir
+    then do
+      putStrLn
+        $ "Error: Backup path must be absolute, but relative path was supplied: "
+        ++ newBackupDir
+      return config
+    else do
+      putStrLn
+        $  "Backup path: "
+        ++ configBackupDir config
+        ++ if isJust mBackupDir then " -> " ++ newBackupDir else ""
+      putStrLn
+        $  "Backup frequency (in minutes): "
+        ++ show (configBackupFreq config)
+        ++ if isJust mBackupFreq then " -> " ++ show newBackupFreq else ""
+      putStrLn
+        $  "Number of backups to keep: "
+        ++ show (configBackupsToKeep config)
+        ++ if isJust mBackupsToKeep then " -> " ++ show newBackupsToKeep else ""
+      return config { configBackupDir     = newBackupDir
+                    , configBackupFreq    = newBackupFreq
+                    , configBackupsToKeep = newBackupsToKeep
+                    }
 
 backupGames :: Config -> Bool -> [String] -> IO Config
 backupGames config loop games = do
@@ -337,15 +359,19 @@ formatModifiedTime = formatTime defaultTimeLocale "%Y_%m_%d_%H_%M_%S"
 promptAddGame :: Config -> String -> IO (Maybe Game)
 promptAddGame config name = case getGameByName config name of
   Just _ -> do
-    putStrLn $ "Warning: Game with the name " ++ name ++ " already exists"
+    putStrLn $ "Error: Game with the name " ++ name ++ " already exists"
     return Nothing
   Nothing -> do
     putStr $ "Enter save path for " ++ name ++ ": "
     hFlush stdout
     path <- getLine
-    if null path
-      then promptAddGame config name
-      else do
+    if
+      | null path -> promptAddGame config name
+      | isRelative path -> do
+        putStrLn
+          "Warning: Path must be absolute, but relative path was supplied."
+        promptAddGame config name
+      | otherwise -> do
         putStr
           "Enter glob pattern to match files/folders on for backup (leave blank to backup everything): "
         hFlush stdout
