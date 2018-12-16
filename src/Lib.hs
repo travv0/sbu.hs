@@ -236,22 +236,31 @@ backupGame config gName = do
   startTime <- getCurrentTime
   case getGameByName config gName of
     Just game -> do
-      anyBackedUp <- backupFiles config
-                                 (gamePath game)
-                                 (gameGlob game)
-                                 (gamePath game)
-                                 (configBackupDir config </> gName)
-      now <- getCurrentTime
-      tz  <- getCurrentTimeZone
-      when anyBackedUp
-        $  putStrLn
-        $  "Finished backing up "
-        ++ gName
-        ++ " in "
-        ++ show (diffUTCTime now startTime)
-        ++ " on "
-        ++ formatTime defaultTimeLocale "%c" (utcToLocalTime tz now)
-        ++ "\n"
+      isDirectory <- doesDirectoryExist $ gamePath game
+      if isDirectory
+        then do
+          anyBackedUp <- backupFiles config
+                                     (gamePath game)
+                                     (gameGlob game)
+                                     (gamePath game)
+                                     (configBackupDir config </> gName)
+          now <- getCurrentTime
+          tz  <- getCurrentTimeZone
+          when anyBackedUp
+            $  putStrLn
+            $  "Finished backing up "
+            ++ gName
+            ++ " in "
+            ++ show (diffUTCTime now startTime)
+            ++ " on "
+            ++ formatTime defaultTimeLocale "%c" (utcToLocalTime tz now)
+            ++ "\n"
+        else
+          putStrLn
+          $  "Warning: Path set for "
+          ++ gName
+          ++ " doesn't exist: "
+          ++ gamePath game
     Nothing -> warnMissingGames config [gName]
 
 backupFiles :: Config -> FilePath -> String -> FilePath -> FilePath -> IO Bool
@@ -330,7 +339,7 @@ promptAddGame config name = case getGameByName config name of
       then promptAddGame config name
       else do
         putStr
-          "Enter pattern to match files/folders on for backup (leave blank to backup everything in save path): "
+          "Enter glob pattern to match files/folders on for backup (leave blank to backup everything): "
         hFlush stdout
         glob <- getLine
         putStrLn ""

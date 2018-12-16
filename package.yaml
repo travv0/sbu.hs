@@ -33,6 +33,7 @@ dependencies:
 library:
   source-dirs: src
   ghc-options:
+  - -O2
   - -Wall
 
 executables:
@@ -40,6 +41,7 @@ executables:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
+    - -O2
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
