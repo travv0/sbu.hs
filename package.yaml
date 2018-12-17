@@ -37,7 +37,7 @@ library:
   - -Wall
 
 executables:
-  sbu-exe:
+  sbu:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
