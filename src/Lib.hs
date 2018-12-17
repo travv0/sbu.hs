@@ -6,6 +6,7 @@ module Lib
 where
 
 import           Control.Concurrent             ( threadDelay )
+import           Control.Exception              ( finally )
 import           Control.Monad
 import           Control.Monad.ListM            ( sortByM )
 import qualified Data.ByteString               as BS
@@ -15,6 +16,7 @@ import           Data.Maybe
 import           Data.Serialize
 import           Data.Time
 import           System.Directory
+import           System.Exit                    ( exitFailure )
 import           System.FilePath
 import           System.FilePath.Glob           ( match
                                                 , compile
@@ -28,10 +30,39 @@ import           Types
 defaultGlob :: String
 defaultGlob = "**/*"
 
+defaultConfigDir :: IO FilePath
+defaultConfigDir = do
+  home <- getHomeDirectory
+  return $ home </> ".sbu/"
+
 defaultConfigPath :: IO FilePath
 defaultConfigPath = do
-  home <- getHomeDirectory
-  return $ home </> ".sbu/config"
+  configDir <- defaultConfigDir
+  return $ configDir </> "config"
+
+lockFilePath :: IO FilePath
+lockFilePath = do
+  configDir <- defaultConfigDir
+  return $ configDir </> ".lock"
+
+createLockFile :: IO ()
+createLockFile = do
+  lockPath <- lockFilePath
+  locked   <- doesFileExist lockPath
+  if locked
+    then do
+      putStrLn
+        $  "sbu appears to be already running.  If it's not, delete the file `"
+        ++ lockPath
+        ++ "' and try again"
+      exitFailure
+    else BS.writeFile lockPath BS.empty
+
+deleteLockFile :: IO ()
+deleteLockFile = do
+  lockPath <- lockFilePath
+  locked   <- doesFileExist lockPath
+  when locked $ removeFile lockPath
 
 defaultConfig :: IO Config
 defaultConfig = do
@@ -40,22 +71,25 @@ defaultConfig = do
 
 handleOptions :: SbuOptions -> IO ()
 handleOptions (SbuOptions configPath command) = do
+  createLockFile
   path   <- fromMaybe <$> defaultConfigPath <*> pure configPath
   config <- readConfig path
-  case config of
-    Right c -> handleCommand command c >>= writeConfig path
-    Left  _ -> do
-      let backupPath = path <.> "bak"
-      backupExists <- doesFileExist backupPath
-      if backupExists
-        then do
-          putStrLn
-            "Error reading config file, attempting to read from backup..."
-          backupConfig <- BS.readFile backupPath
-          case decode backupConfig of
-            Right c -> handleCommand command c >>= writeConfig path
-            Left  _ -> handleWithNewConfig command path
-        else handleWithNewConfig command path
+  (case config of
+      Right c -> handleCommand command c >>= writeConfig path
+      Left  _ -> do
+        let backupPath = path <.> "bak"
+        backupExists <- doesFileExist backupPath
+        if backupExists
+          then do
+            putStrLn
+              "Error reading config file, attempting to read from backup..."
+            backupConfig <- BS.readFile backupPath
+            case decode backupConfig of
+              Right c -> handleCommand command c >>= writeConfig path
+              Left  _ -> handleWithNewConfig command path
+          else handleWithNewConfig command path
+    )
+    `finally` deleteLockFile
 
 handleWithNewConfig :: Command -> FilePath -> IO ()
 handleWithNewConfig command path = do
