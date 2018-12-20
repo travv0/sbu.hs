@@ -199,11 +199,11 @@ editGame config gName mNewName mNewPath mNewGlob =
       putStrLn "One or more of --name, --path, or --glob must be provided."
       return config
     else case getGameByName config gName of
-      Just _ -> do
-        putStrLn $ "Error: Game with the name " ++ gName ++ " already exists"
-        return config
       Nothing -> do
-        let i          = elemIndex gName (map gameName $ configGames config)
+        putStrLn $ "Error: Game with the name " ++ gName ++ " doesn't exist"
+        return config
+      Just g -> do
+        let i          = elemIndex g (configGames config)
             mSplitList = splitAt <$> i <*> pure (configGames config)
         case mSplitList of
           Nothing -> do
