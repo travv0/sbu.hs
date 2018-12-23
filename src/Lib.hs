@@ -64,6 +64,11 @@ deleteLockFile = do
   locked   <- doesFileExist lockPath
   when locked $ removeFile lockPath
 
+withLockFile :: IO (Maybe Config) -> IO (Maybe Config)
+withLockFile f = do
+  createLockFile
+  f `finally` deleteLockFile
+
 defaultConfig :: IO Config
 defaultConfig = do
   home <- getHomeDirectory
@@ -71,31 +76,28 @@ defaultConfig = do
 
 handleOptions :: SbuOptions -> IO ()
 handleOptions (SbuOptions configPath command) = do
-  createLockFile
   path   <- fromMaybe <$> defaultConfigPath <*> pure configPath
   config <- readConfig path
-  (case config of
-      Right c -> handleCommand command c >>= writeConfig path
-      Left  _ -> do
-        let backupPath = path <.> "bak"
-        backupExists <- doesFileExist backupPath
-        if backupExists
-          then do
-            putStrLn
-              "Error reading config file, attempting to read from backup..."
-            backupConfig <- BS.readFile backupPath
-            case decode backupConfig of
-              Right c -> handleCommand command c >>= writeConfig path
-              Left  _ -> handleWithNewConfig command path
-          else handleWithNewConfig command path
-    )
-    `finally` deleteLockFile
+  case config of
+    Right c -> handleCommand command c >>= maybeWriteConfig path
+    Left  _ -> do
+      let backupPath = path <.> "bak"
+      backupExists <- doesFileExist backupPath
+      if backupExists
+        then do
+          putStrLn
+            "Error reading config file, attempting to read from backup..."
+          backupConfig <- BS.readFile backupPath
+          case decode backupConfig of
+            Right c -> handleCommand command c >>= maybeWriteConfig path
+            Left  _ -> handleWithNewConfig command path
+        else handleWithNewConfig command path
 
 handleWithNewConfig :: Command -> FilePath -> IO ()
 handleWithNewConfig command path = do
   c <- defaultConfig
   createDefaultConfig c path
-  handleCommand command c >>= writeConfig path
+  handleCommand command c >>= maybeWriteConfig path
 
 createDefaultConfig :: Config -> FilePath -> IO ()
 createDefaultConfig config path = do
@@ -134,17 +136,21 @@ writeConfig path config = do
   when configExists $ renameFile path $ path <.> "bak"
   BS.writeFile path $ encode config
 
-handleCommand :: Command -> Config -> IO Config
-handleCommand (AddCmd (AddOptions games))   config = addGames config games
+maybeWriteConfig :: FilePath -> Maybe Config -> IO ()
+maybeWriteConfig path config = forM_ config (writeConfig path)
+
+handleCommand :: Command -> Config -> IO (Maybe Config)
+handleCommand (AddCmd (AddOptions games)) config =
+  withLockFile $ addGames config games
 handleCommand ListCmd                       config = listGames config
 handleCommand (InfoCmd (InfoOptions games)) config = infoGames config games
 handleCommand (RemoveCmd (RemoveOptions games yes)) config =
-  removeGames config yes games
+  withLockFile $ removeGames config yes games
 handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) config =
-  editGame config game mNewName mNewPath mNewGlob
+  withLockFile $ editGame config game mNewName mNewPath mNewGlob
 handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) config
-  = editConfig config mBackupDir mBackupFreq mBackupsToKeep
-handleCommand (ConfigCmd ConfigDefaults) config = do
+  = withLockFile $ editConfig config mBackupDir mBackupFreq mBackupsToKeep
+handleCommand (ConfigCmd ConfigDefaults) config = withLockFile $ do
   dc <- defaultConfig
   editConfig config
              (Just $ configBackupDir dc)
@@ -153,21 +159,21 @@ handleCommand (ConfigCmd ConfigDefaults) config = do
 handleCommand (BackupCmd (BackupOptions games loop)) config =
   backupGames config loop games
 
-addGames :: Config -> [String] -> IO Config
+addGames :: Config -> [String] -> IO (Maybe Config)
 addGames config games = do
   newGames <- catMaybes <$> mapM (promptAddGame config) games
-  return $ config { configGames = newGames `union` configGames config }
+  return $ Just $ config { configGames = newGames `union` configGames config }
 
-listGames :: Config -> IO Config
+listGames :: Config -> IO (Maybe Config)
 listGames config = do
   putStrLn $ intercalate "\n" $ gameNames config
-  return config
+  return Nothing
 
-removeGames :: Config -> Bool -> [String] -> IO Config
+removeGames :: Config -> Bool -> [String] -> IO (Maybe Config)
 removeGames config yes games = if yes
   then do
     putStrLn $ "Removed the following games:\n" ++ intercalate "\n" games
-    return $ config
+    return $ Just $ config
       { configGames = filter ((`notElem` games) . gameName) $ configGames config
       }
   else do
@@ -175,16 +181,16 @@ removeGames config yes games = if yes
     gamesToRemove <-
       filterM promptRemove $ filter ((`elem` games) . gameName) $ configGames
         config
-    return $ config
+    return $ Just $ config
       { configGames = filter (`notElem` gamesToRemove) $ configGames config
       }
 
-infoGames :: Config -> [String] -> IO Config
+infoGames :: Config -> [String] -> IO (Maybe Config)
 infoGames config games = do
   if null games
     then mapM_ (infoGame config) $ gameNames config
     else mapM_ (infoGame config) games
-  return config
+  return Nothing
 
 editGame
   :: Config
@@ -192,23 +198,23 @@ editGame
   -> Maybe String
   -> Maybe FilePath
   -> Maybe String
-  -> IO Config
+  -> IO (Maybe Config)
 editGame config gName mNewName mNewPath mNewGlob =
   if all isNothing [mNewName, mNewPath, mNewGlob]
     then do
       putStrLn "One or more of --name, --path, or --glob must be provided."
-      return config
+      return Nothing
     else case getGameByName config gName of
       Nothing -> do
         putStrLn $ "Error: Game with the name " ++ gName ++ " doesn't exist"
-        return config
+        return Nothing
       Just g -> do
         let i          = elemIndex g (configGames config)
             mSplitList = splitAt <$> i <*> pure (configGames config)
         case mSplitList of
           Nothing -> do
             warnMissingGames config [gName]
-            return config
+            return Nothing
           Just (_    , []         ) -> error "Couldn't find game in list"
           Just (front, game : back) -> do
             let
@@ -225,7 +231,7 @@ editGame config gName mNewName mNewPath mNewGlob =
                 putStrLn
                   $ "Error: Save path must be absolute, but relative path was supplied: "
                   ++ newPath
-                return config
+                return Nothing
               else do
                 when (isJust mNewName)
                   $  putStrLn
@@ -253,10 +259,16 @@ editGame config gName mNewName mNewPath mNewGlob =
                   renameDirectory (configBackupDir config </> gName)
                                   (configBackupDir config </> newName)
 
-                return config { configGames = front ++ (editedGame : back) }
+                return $ Just $ config
+                  { configGames = front ++ (editedGame : back)
+                  }
 
 editConfig
-  :: Config -> Maybe FilePath -> Maybe Integer -> Maybe Integer -> IO Config
+  :: Config
+  -> Maybe FilePath
+  -> Maybe Integer
+  -> Maybe Integer
+  -> IO (Maybe Config)
 editConfig config mBackupDir mBackupFreq mBackupsToKeep = do
   let newBackupDir     = fromMaybe (configBackupDir config) mBackupDir
       newBackupFreq    = fromMaybe (configBackupFreq config) mBackupFreq
@@ -267,7 +279,7 @@ editConfig config mBackupDir mBackupFreq mBackupsToKeep = do
       putStrLn
         $ "Error: Backup path must be absolute, but relative path was supplied: "
         ++ newBackupDir
-      return config
+      return Nothing
     else do
       putStrLn
         $  "Backup path: "
@@ -281,19 +293,19 @@ editConfig config mBackupDir mBackupFreq mBackupsToKeep = do
         $  "Number of backups to keep: "
         ++ show (configBackupsToKeep config)
         ++ if isJust mBackupsToKeep then " -> " ++ show newBackupsToKeep else ""
-      return config { configBackupDir     = newBackupDir
-                    , configBackupFreq    = newBackupFreq
-                    , configBackupsToKeep = newBackupsToKeep
-                    }
+      return $ Just $ config { configBackupDir     = newBackupDir
+                             , configBackupFreq    = newBackupFreq
+                             , configBackupsToKeep = newBackupsToKeep
+                             }
 
-backupGames :: Config -> Bool -> [String] -> IO Config
+backupGames :: Config -> Bool -> [String] -> IO (Maybe Config)
 backupGames config loop games = do
   mapM_ (backupGame config) $ if null games then gameNames config else games
   if loop
     then do
       threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
       backupGames config loop games
-    else return config
+    else return Nothing
 
 backupGame :: Config -> String -> IO ()
 backupGame config gName = do
