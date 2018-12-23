@@ -142,10 +142,10 @@ maybeWriteConfig path config = forM_ config (writeConfig path)
 handleCommand :: Command -> FilePath -> Config -> IO ()
 handleCommand (AddCmd (AddOptions games)) path config =
   withLockFile $ maybeWriteConfig path =<< addGames config games
-handleCommand ListCmd path config = do
+handleCommand ListCmd _ config = do
   _ <- listGames config
   return ()
-handleCommand (InfoCmd (InfoOptions games)) path config = do
+handleCommand (InfoCmd (InfoOptions games)) _ config = do
   _ <- infoGames config games
   return ()
 handleCommand (RemoveCmd (RemoveOptions games yes)) path config =
@@ -164,7 +164,7 @@ handleCommand (ConfigCmd ConfigDefaults) path config = withLockFile $ do
                                        (Just $ configBackupDir dc)
                                        (Just $ configBackupFreq dc)
                                        (Just $ configBackupsToKeep dc)
-handleCommand (BackupCmd (BackupOptions games loop)) path config = do
+handleCommand (BackupCmd (BackupOptions games loop)) _ config = do
   _ <- backupGames config loop games
   return ()
 
