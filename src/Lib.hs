@@ -64,7 +64,7 @@ deleteLockFile = do
   locked   <- doesFileExist lockPath
   when locked $ removeFile lockPath
 
-withLockFile :: IO (Maybe Config) -> IO (Maybe Config)
+withLockFile :: IO () -> IO ()
 withLockFile f = do
   createLockFile
   f `finally` deleteLockFile
@@ -79,7 +79,7 @@ handleOptions (SbuOptions configPath command) = do
   path   <- fromMaybe <$> defaultConfigPath <*> pure configPath
   config <- readConfig path
   case config of
-    Right c -> handleCommand command c >>= maybeWriteConfig path
+    Right c -> handleCommand command path c
     Left  _ -> do
       let backupPath = path <.> "bak"
       backupExists <- doesFileExist backupPath
@@ -89,7 +89,7 @@ handleOptions (SbuOptions configPath command) = do
             "Error reading config file, attempting to read from backup..."
           backupConfig <- BS.readFile backupPath
           case decode backupConfig of
-            Right c -> handleCommand command c >>= maybeWriteConfig path
+            Right c -> handleCommand command path c
             Left  _ -> handleWithNewConfig command path
         else handleWithNewConfig command path
 
@@ -97,7 +97,7 @@ handleWithNewConfig :: Command -> FilePath -> IO ()
 handleWithNewConfig command path = do
   c <- defaultConfig
   createDefaultConfig c path
-  handleCommand command c >>= maybeWriteConfig path
+  handleCommand command path c
 
 createDefaultConfig :: Config -> FilePath -> IO ()
 createDefaultConfig config path = do
@@ -139,25 +139,34 @@ writeConfig path config = do
 maybeWriteConfig :: FilePath -> Maybe Config -> IO ()
 maybeWriteConfig path config = forM_ config (writeConfig path)
 
-handleCommand :: Command -> Config -> IO (Maybe Config)
-handleCommand (AddCmd (AddOptions games)) config =
-  withLockFile $ addGames config games
-handleCommand ListCmd                       config = listGames config
-handleCommand (InfoCmd (InfoOptions games)) config = infoGames config games
-handleCommand (RemoveCmd (RemoveOptions games yes)) config =
-  withLockFile $ removeGames config yes games
-handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) config =
-  withLockFile $ editGame config game mNewName mNewPath mNewGlob
-handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) config
-  = withLockFile $ editConfig config mBackupDir mBackupFreq mBackupsToKeep
-handleCommand (ConfigCmd ConfigDefaults) config = withLockFile $ do
+handleCommand :: Command -> FilePath -> Config -> IO ()
+handleCommand (AddCmd (AddOptions games)) path config =
+  withLockFile $ maybeWriteConfig path =<< addGames config games
+handleCommand ListCmd path config = do
+  _ <- listGames config
+  return ()
+handleCommand (InfoCmd (InfoOptions games)) path config = do
+  _ <- infoGames config games
+  return ()
+handleCommand (RemoveCmd (RemoveOptions games yes)) path config =
+  withLockFile $ maybeWriteConfig path =<< removeGames config yes games
+handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) path config
+  = withLockFile
+    $   maybeWriteConfig path
+    =<< editGame config game mNewName mNewPath mNewGlob
+handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) path config
+  = withLockFile
+    $   maybeWriteConfig path
+    =<< editConfig config mBackupDir mBackupFreq mBackupsToKeep
+handleCommand (ConfigCmd ConfigDefaults) path config = withLockFile $ do
   dc <- defaultConfig
-  editConfig config
-             (Just $ configBackupDir dc)
-             (Just $ configBackupFreq dc)
-             (Just $ configBackupsToKeep dc)
-handleCommand (BackupCmd (BackupOptions games loop)) config =
-  backupGames config loop games
+  maybeWriteConfig path =<< editConfig config
+                                       (Just $ configBackupDir dc)
+                                       (Just $ configBackupFreq dc)
+                                       (Just $ configBackupsToKeep dc)
+handleCommand (BackupCmd (BackupOptions games loop)) path config = do
+  _ <- backupGames config loop games
+  return ()
 
 addGames :: Config -> [String] -> IO (Maybe Config)
 addGames config games = do
