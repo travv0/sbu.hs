@@ -27,7 +27,7 @@ dependencies:
 - cereal
 - bytestring
 - time
-- Glob
+- Glob >= 0.10.0
 - monadlist
 
 library:

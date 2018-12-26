@@ -39,7 +39,9 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # using the same syntax as the packages field.
 # (e.g., acme-missiles-0.3)
-extra-deps: []
+extra-deps:
+- github: Deewiant/glob
+  commit: a78e475638b083cd30989850ce686d171b88e74d
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
