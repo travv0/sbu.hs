@@ -42,6 +42,8 @@ packages:
 extra-deps:
 - github: Deewiant/glob
   commit: a78e475638b083cd30989850ce686d171b88e74d
+  sha256: 332521dac251bd52442c9ca447c394fc66909dca93f9d5e92438794d047ec262
+  size: 30182
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

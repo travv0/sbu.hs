@@ -142,12 +142,8 @@ maybeWriteConfig path config = forM_ config (writeConfig path)
 handleCommand :: Command -> FilePath -> Config -> IO ()
 handleCommand (AddCmd (AddOptions games)) path config =
   withLockFile $ maybeWriteConfig path =<< addGames config games
-handleCommand ListCmd _ config = do
-  _ <- listGames config
-  return ()
-handleCommand (InfoCmd (InfoOptions games)) _ config = do
-  _ <- infoGames config games
-  return ()
+handleCommand ListCmd                       _ config = listGames config
+handleCommand (InfoCmd (InfoOptions games)) _ config = infoGames config games
 handleCommand (RemoveCmd (RemoveOptions games yes)) path config =
   withLockFile $ maybeWriteConfig path =<< removeGames config yes games
 handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) path config
@@ -164,19 +160,16 @@ handleCommand (ConfigCmd ConfigDefaults) path config = withLockFile $ do
                                        (Just $ configBackupDir dc)
                                        (Just $ configBackupFreq dc)
                                        (Just $ configBackupsToKeep dc)
-handleCommand (BackupCmd (BackupOptions games loop)) _ config = do
-  _ <- backupGames config loop games
-  return ()
+handleCommand (BackupCmd (BackupOptions games loop)) _ config =
+  backupGames config loop games
 
 addGames :: Config -> [String] -> IO (Maybe Config)
 addGames config games = do
   newGames <- catMaybes <$> mapM (promptAddGame config) games
   return $ Just $ config { configGames = newGames `union` configGames config }
 
-listGames :: Config -> IO (Maybe Config)
-listGames config = do
-  putStrLn $ intercalate "\n" $ gameNames config
-  return Nothing
+listGames :: Config -> IO ()
+listGames config = putStrLn $ intercalate "\n" $ gameNames config
 
 removeGames :: Config -> Bool -> [String] -> IO (Maybe Config)
 removeGames config yes games = if yes
@@ -194,12 +187,10 @@ removeGames config yes games = if yes
       { configGames = filter (`notElem` gamesToRemove) $ configGames config
       }
 
-infoGames :: Config -> [String] -> IO (Maybe Config)
-infoGames config games = do
-  if null games
-    then mapM_ (infoGame config) $ gameNames config
-    else mapM_ (infoGame config) games
-  return Nothing
+infoGames :: Config -> [String] -> IO ()
+infoGames config games = if null games
+  then mapM_ (infoGame config) $ gameNames config
+  else mapM_ (infoGame config) games
 
 editGame
   :: Config
@@ -307,14 +298,12 @@ editConfig config mBackupDir mBackupFreq mBackupsToKeep = do
                              , configBackupsToKeep = newBackupsToKeep
                              }
 
-backupGames :: Config -> Bool -> [String] -> IO (Maybe Config)
+backupGames :: Config -> Bool -> [String] -> IO ()
 backupGames config loop games = do
   mapM_ (backupGame config) $ if null games then gameNames config else games
-  if loop
-    then do
-      threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
-      backupGames config loop games
-    else return Nothing
+  when loop $ do
+    threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
+    backupGames config loop games
 
 backupGame :: Config -> String -> IO ()
 backupGame config gName = do
