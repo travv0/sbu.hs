@@ -103,6 +103,7 @@ createDefaultConfig :: Config -> FilePath -> IO ()
 createDefaultConfig config path = do
   printCreatedConfigMsg path config
   createDirectoryIfMissing True $ takeDirectory path
+  BS.writeFile path $ encode config
 
 printCreatedConfigMsg :: FilePath -> Config -> IO ()
 printCreatedConfigMsg path config =
