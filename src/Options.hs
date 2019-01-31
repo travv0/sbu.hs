@@ -15,6 +15,9 @@ import           Data.String                    ( IsString )
 
 import           Options.Applicative     hiding ( infoParser )
 
+version :: String
+version = "1.1.0"
+
 data SbuOptions = SbuOptions
   { sbuConfigPath :: Maybe FilePath
   , sbuCommand :: Command
@@ -191,7 +194,11 @@ opts =
           <> value Nothing
           <> help "Path to configuration file"
           )
-    <*> commands
+    <*> (   infoOption
+            ("sbu version " ++ version)
+            (long "version" <> short 'v' <> help "Print version information")
+        <*> commands
+        )
 
 commands :: Parser Command
 commands =
