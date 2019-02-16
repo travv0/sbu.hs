@@ -145,27 +145,35 @@ maybeWriteConfig path config = forM_ config (writeConfig path)
 
 handleCommand
   :: (MonadIO m, MonadReader Config m) => Command -> FilePath -> m ()
+
 handleCommand (AddCmd (AddOptions games)) path = do
   config <- addGames games
   liftIO $ withLockFile $ maybeWriteConfig path config
+
 handleCommand ListCmd                               _    = listGames
+
 handleCommand (InfoCmd   (InfoOptions games      )) _    = infoGames games
+
 handleCommand (RemoveCmd (RemoveOptions games yes)) path = do
   config <- removeGames yes games
   liftIO $ withLockFile $ maybeWriteConfig path config
+
 handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) path = do
   config <- editGame game mNewName mNewPath mNewGlob
   liftIO $ withLockFile $ maybeWriteConfig path config
+
 handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) path
   = do
     config <- editConfig mBackupDir mBackupFreq mBackupsToKeep
     liftIO $ withLockFile $ maybeWriteConfig path config
+
 handleCommand (ConfigCmd ConfigDefaults) path = do
   dc     <- liftIO defaultConfig
   config <- editConfig (Just $ configBackupDir dc)
                        (Just $ configBackupFreq dc)
                        (Just $ configBackupsToKeep dc)
   liftIO $ withLockFile $ maybeWriteConfig path config
+
 handleCommand (BackupCmd (BackupOptions games loop)) _ = backupGames loop games
 
 addGames :: (MonadIO m, MonadReader Config m) => [String] -> m (Maybe Config)
