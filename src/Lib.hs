@@ -81,10 +81,10 @@ defaultConfig = do
 
 handleOptions :: SbuOptions -> IO ()
 handleOptions (SbuOptions configPath command) = do
-  path   <- fromMaybe <$> defaultConfigPath <*> pure configPath
-  config <- readConfig path
-  case config of
-    Right c -> runReaderT (handleCommand command path) c
+  path    <- fromMaybe <$> defaultConfigPath <*> pure configPath
+  econfig <- readConfig path
+  config  <- case econfig of
+    Right c -> return c
     Left  _ -> do
       let backupPath = path <.> "bak"
       backupExists <- doesFileExist backupPath
@@ -94,14 +94,11 @@ handleOptions (SbuOptions configPath command) = do
             "Error reading config file, attempting to read from backup..."
           backupConfig <- BS.readFile backupPath
           case decode backupConfig of
-            Right c -> runReaderT (handleCommand command path) c
-            Left  _ -> handleWithNewConfig command path
-        else handleWithNewConfig command path
-
-handleWithNewConfig :: Command -> FilePath -> IO ()
-handleWithNewConfig command path = do
-  c <- createDefaultConfig path
-  runReaderT (handleCommand command path) c
+            Right c -> return c
+            Left  _ -> createDefaultConfig path
+        else createDefaultConfig path
+  _ <- runReaderT (handleCommand command path) config
+  return ()
 
 createDefaultConfig :: FilePath -> IO Config
 createDefaultConfig path = do
