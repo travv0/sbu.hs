@@ -1,5 +1,5 @@
 name:                sbu
-version:             1.1.0
+version:             1.1.1
 github:              "tssund93/sbu"
 license:             BSD3
 author:              "Travis"
@@ -29,12 +29,15 @@ dependencies:
 - time
 - Glob >= 0.10.0
 - monadlist
+- mtl
+- unliftio
 
 library:
   source-dirs: src
   ghc-options:
   - -O2
   - -Wall
+  - -Werror
 
 executables:
   sbu:
