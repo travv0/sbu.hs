@@ -3,11 +3,19 @@
 module Types
   ( Config(..)
   , Game(..)
+  , Sbu
+  , Logger
   )
 where
 
+import           Control.Monad.Reader
 import           Data.Serialize
 import           GHC.Generics
+import           Pipes
+
+type Sbu = Logger (ReaderT Config IO) ()
+
+type Logger m = Producer String m
 
 data Config = Config
   { configBackupDir :: FilePath

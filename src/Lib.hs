@@ -7,6 +7,9 @@ module Lib
 where
 
 import           Control.Concurrent             ( threadDelay )
+import           Control.Exception              ( try
+                                                , throwIO
+                                                )
 import           Control.Monad
 import           Control.Monad.IO.Class
 import           UnliftIO                       ( MonadUnliftIO
@@ -20,6 +23,11 @@ import           Data.List
 import           Data.Maybe
 import           Data.Serialize
 import           Data.Time
+import           Foreign.C.Error                ( Errno(Errno)
+                                                , ePIPE
+                                                )
+import qualified GHC.IO.Exception              as G
+import           Pipes
 import           System.Directory
 import           System.Exit                    ( exitFailure )
 import           System.FilePath
@@ -45,6 +53,11 @@ defaultConfigPath = do
   configDir <- defaultConfigDir
   return $ configDir </> "config"
 
+defaultLogsDir :: IO FilePath
+defaultLogsDir = do
+  configDir <- defaultConfigDir
+  return $ configDir </> "logs"
+
 lockFilePath :: IO FilePath
 lockFilePath = do
   configDir <- defaultConfigDir
@@ -60,7 +73,7 @@ createLockFile = do
         $  "sbu appears to be already running.  If it's not, delete the file `"
         ++ lockPath
         ++ "' and try again"
-      exitFailure
+      liftIO exitFailure
     else BS.writeFile lockPath BS.empty
 
 deleteLockFile :: IO ()
@@ -78,6 +91,32 @@ defaultConfig :: IO Config
 defaultConfig = do
   home <- getHomeDirectory
   return $ Config (home </> "sbu_backups") 15 20 []
+
+stdoutAndLog :: MonadIO m => Consumer' String m ()
+stdoutAndLog = do
+  logsDir <- liftIO defaultLogsDir
+  liftIO $ createDirectoryIfMissing True logsDir
+  go logsDir
+ where
+  go logsDir = do
+    now <- liftIO getCurrentTime
+    str <- await
+    x   <- liftIO $ try $ do
+      putStrLn str
+      appendFile
+        (logsDir </> show (utctDay now) <.> "log")
+        ( unlines
+        $ map ((formatTime defaultTimeLocale "%X" now ++ ": ") ++)
+        $ lines str
+        )
+    case x of
+      Left G.IOError { G.ioe_type = G.ResourceVanished, G.ioe_errno = Just ioe }
+        | Errno ioe == ePIPE -> return ()
+      Left  e  -> liftIO (throwIO e)
+      Right () -> go logsDir
+
+runSbu :: Sbu -> Config -> IO ()
+runSbu sbu = runReaderT $ runEffect (sbu >-> stdoutAndLog)
 
 handleOptions :: SbuOptions -> IO ()
 handleOptions (SbuOptions configPath command) = do
@@ -97,7 +136,7 @@ handleOptions (SbuOptions configPath command) = do
             Right c -> return c
             Left  _ -> createDefaultConfig path
         else createDefaultConfig path
-  _ <- runReaderT (handleCommand command path) config
+  _ <- runSbu (handleCommand command path) config
   return ()
 
 createDefaultConfig :: FilePath -> IO Config
@@ -143,8 +182,7 @@ writeConfig path config = do
 maybeWriteConfig :: FilePath -> Maybe Config -> IO ()
 maybeWriteConfig path config = forM_ config (writeConfig path)
 
-handleCommand
-  :: (MonadIO m, MonadReader Config m) => Command -> FilePath -> m ()
+handleCommand :: Command -> FilePath -> Sbu
 
 handleCommand (AddCmd (AddOptions games)) path = do
   config <- addGames games
@@ -208,6 +246,7 @@ removeGames yes games = do
         $ filterM promptRemove
         $ filter ((`elem` games) . gameName)
         $ configGames config
+      mapM_ (\g -> liftIO $ putStrLn $ "Removed " ++ gameName g) gamesToRemove
       return $ Just $ config
         { configGames = filter (`notElem` gamesToRemove) $ configGames config
         }
@@ -266,22 +305,22 @@ editGame gName mNewName mNewPath mNewGlob = do
                   ++ newPath
                 return Nothing
               else do
-                liftIO
-                  $  when (isJust mNewName)
+                when (isJust mNewName)
+                  $  liftIO
                   $  putStrLn
                   $  "Name: "
                   ++ gName
                   ++ " -> "
                   ++ newName
-                liftIO
-                  $  when (isJust mNewPath)
+                when (isJust mNewPath)
+                  $  liftIO
                   $  putStrLn
                   $  "Save path: "
                   ++ gamePath game
                   ++ " -> "
                   ++ newPath
-                liftIO
-                  $  when (isJust mNewGlob)
+                when (isJust mNewGlob)
+                  $  liftIO
                   $  putStrLn
                   $  "Save glob: "
                   ++ gameGlob game
@@ -290,10 +329,12 @@ editGame gName mNewName mNewPath mNewGlob = do
 
                 backupDirExists <-
                   liftIO $ doesDirectoryExist $ configBackupDir config </> gName
-                liftIO $ when (isJust mNewName && backupDirExists) $ do
-                  putStrLn "Game name changed, renaming backup directory..."
-                  renameDirectory (configBackupDir config </> gName)
-                                  (configBackupDir config </> newName)
+                when (isJust mNewName && backupDirExists) $ do
+                  liftIO $ putStrLn
+                    "Game name changed, renaming backup directory..."
+                  liftIO $ renameDirectory
+                    (configBackupDir config </> gName)
+                    (configBackupDir config </> newName)
 
                 return $ Just $ config
                   { configGames = front ++ (editedGame : back)
@@ -339,7 +380,8 @@ editConfig mBackupDir mBackupFreq mBackupsToKeep = do
                              , configBackupsToKeep = newBackupsToKeep
                              }
 
-backupGames :: (MonadIO m, MonadReader Config m) => Bool -> [String] -> m ()
+backupGames
+  :: (MonadIO m, MonadReader Config m) => Bool -> [String] -> Logger m ()
 backupGames loop games = do
   config <- ask
   gNames <- gameNames
@@ -348,7 +390,7 @@ backupGames loop games = do
     liftIO $ threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
     backupGames loop games
 
-backupGame :: (MonadIO m, MonadReader Config m) => String -> m ()
+backupGame :: (MonadIO m, MonadReader Config m) => String -> Logger m ()
 backupGame gName = do
   config    <- ask
   startTime <- liftIO getCurrentTime
@@ -364,9 +406,8 @@ backupGame gName = do
                                      (configBackupDir config </> gName)
           now <- liftIO getCurrentTime
           tz  <- liftIO getCurrentTimeZone
-          liftIO
-            $  when anyBackedUp
-            $  putStrLn
+          when anyBackedUp
+            $  yield
             $  "Finished backing up "
             ++ gName
             ++ " in "
@@ -375,8 +416,7 @@ backupGame gName = do
             ++ formatTime defaultTimeLocale "%c" (utcToLocalTime tz now)
             ++ "\n"
         else
-          liftIO
-          $  putStrLn
+          yield
           $  "Warning: Path set for "
           ++ gName
           ++ " doesn't exist: "
@@ -389,7 +429,7 @@ backupFiles
   -> String
   -> FilePath
   -> FilePath
-  -> m Bool
+  -> Logger m Bool
 backupFiles basePath glob from to = do
   files <- liftIO $ getDirectoryContents from
   or <$> mapM (\f -> backupFile basePath glob (from </> f) (to </> f))
@@ -401,7 +441,7 @@ backupFile
   -> String
   -> FilePath
   -> FilePath
-  -> m Bool
+  -> Logger m Bool
 backupFile basePath glob from to = do
   isDirectory <- liftIO $ doesDirectoryExist from
   if isDirectory
@@ -428,24 +468,24 @@ backupFile basePath glob from to = do
     if match (compile $ addTrailingPathSeparator basePath ++ glob) from
       then do
         liftIO $ createDirectoryIfMissing True $ dropFileName to
-        liftIO $ putStrLn $ from ++ " ==>\n\t\t" ++ to
+        yield $ from ++ " ==>\n\t\t" ++ to
         liftIO $ copyFileWithMetadata from to
         cleanupBackups to
         return True
       else return False
 
-cleanupBackups :: (MonadIO m, MonadReader Config m) => FilePath -> m ()
+cleanupBackups :: (MonadIO m, MonadReader Config m) => FilePath -> Logger m ()
 cleanupBackups backupPath = do
   config <- ask
-  liftIO $ when (configBackupsToKeep config > 0) $ do
-    files <- (backupPath :) <$> globDir1
+  when (configBackupsToKeep config > 0) $ do
+    files <- liftIO $ (backupPath :) <$> globDir1
       (compile
       $ takeFileName backupPath
       ++ ".bak.[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]"
       )
       (dropFileName backupPath)
     when (toInteger (length files) > configBackupsToKeep config) $ do
-      sortedFiles <- sortByM
+      sortedFiles <- liftIO $ sortByM
         (\f1 f2 -> do
           modTime1 <- getModificationTime f1
           modTime2 <- getModificationTime f2
@@ -456,8 +496,8 @@ cleanupBackups backupPath = do
             drop (fromIntegral $ configBackupsToKeep config) sortedFiles
       mapM_
         (\f -> do
-          putStrLn $ "Deleting " ++ f
-          removeFile f
+          yield $ "Deleting " ++ f
+          liftIO $ removeFile f
         )
         filesToDelete
 
@@ -524,9 +564,7 @@ promptRemove game = do
   putStr $ "Permanently delete " ++ gameName game ++ "? (y/N) "
   hFlush stdout
   input <- getLine
-  let rm = toLower (head $ if null input then "n" else input) == 'y'
-  when rm $ putStrLn $ "Removed " ++ gameName game
-  return rm
+  return $ toLower (head $ if null input then "n" else input) == 'y'
 
 warnMissingGames :: (MonadIO m, MonadReader Config m) => [String] -> m ()
 warnMissingGames games = do
