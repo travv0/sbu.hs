@@ -453,15 +453,23 @@ backupFile basePath glob from to = do
         then liftIO $ Just <$> getModificationTime to
         else return Nothing
       case mToModTime of
-        Just toModTime -> if fromModTime /= toModTime
-          then do
-            liftIO
-              $   renameFile to
-              $   to
-              <.> "bak"
-              <.> formatModifiedTime toModTime
-            copyAndCleanup
-          else return False
+        Just toModTime ->
+          if fromModTime
+                 { utctDayTime = secondsToDiffTime $ round $ utctDayTime
+                                   fromModTime
+                 }
+               /= toModTime
+                    { utctDayTime = secondsToDiffTime $ round $ utctDayTime
+                                      toModTime
+                    }
+            then do
+              liftIO
+                $   renameFile to
+                $   to
+                <.> "bak"
+                <.> formatModifiedTime toModTime
+              copyAndCleanup
+            else return False
         Nothing -> copyAndCleanup
  where
   copyAndCleanup =
