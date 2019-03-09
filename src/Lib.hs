@@ -82,7 +82,7 @@ deleteLockFile = do
   locked   <- doesFileExist lockPath
   when locked $ removeFile lockPath
 
-withLockFile :: (MonadUnliftIO m) => m () -> m ()
+withLockFile :: MonadUnliftIO m => m () -> m ()
 withLockFile f = do
   liftIO createLockFile
   f `finally` liftIO deleteLockFile
@@ -587,7 +587,7 @@ warnMissingGames games = do
     )
     games
 
-getGameByName :: (MonadReader Config m) => String -> m (Maybe Game)
+getGameByName :: MonadReader Config m => String -> m (Maybe Game)
 getGameByName name = do
   config <- ask
   case filter (\g -> gameName g == name) $ configGames config of
