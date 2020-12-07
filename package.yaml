@@ -1,5 +1,5 @@
 name:                sbu
-version:             1.2.1
+version:             2.0.0
 github:              "tssund93/sbu"
 license:             BSD3
 author:              "Travis"
@@ -38,7 +38,6 @@ library:
   ghc-options:
   - -O2
   - -Wall
-  - -Werror
 
 executables:
   sbu:
