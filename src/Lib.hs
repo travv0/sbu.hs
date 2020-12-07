@@ -11,7 +11,7 @@ import Control.Monad.Reader (MonadReader (ask), ReaderT (runReaderT), asks)
 import qualified Data.ByteString as BS
 import Data.Char (toLower)
 import Data.List (elemIndex, intercalate, sort)
-import Data.Maybe (fromMaybe, isJust, isNothing)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Serialize (decode, encode)
 import Data.Time (
     UTCTime (utctDay, utctDayTime),
@@ -239,7 +239,10 @@ addGame game path glob = do
                                 ++ fullPath
                     return Nothing
                 else do
-                    let newGame = Game game fullPath $ fromMaybe "" glob
+                    let newGlob = case fromMaybe "" glob of
+                            "none" -> ""
+                            g -> g
+                        newGame = Game game fullPath newGlob
                     liftIO $ putStrLn "Game added successfully:\n"
                     printGame newGame
                     return $ Just $ config{configGames = newGame : configGames config}
@@ -301,14 +304,14 @@ editGame ::
     m (Maybe Config)
 editGame gName mNewName mNewPath mNewGlob = do
     config <- ask
-    mgName <- getGameByName gName
-    if all isNothing [mNewName, mNewPath, mNewGlob]
-        then do
+    mGame <- getGameByName gName
+    case (mNewName, mNewPath, mNewGlob) of
+        (Nothing, Nothing, Nothing) -> do
             liftIO $
                 putStrLn
                     "One or more of --name, --path, or --glob must be provided."
             return Nothing
-        else case mgName of
+        _ -> case mGame of
             Nothing -> do
                 liftIO $
                     putStrLn $
@@ -327,7 +330,9 @@ editGame gName mNewName mNewPath mNewGlob = do
                     Just (front, game : back) -> do
                         let newName = fromMaybe (gameName game) mNewName
                             newPath = fromMaybe (gamePath game) mNewPath
-                            newGlob = fromMaybe (gameGlob game) mNewGlob
+                            newGlob = case fromMaybe (gameGlob game) mNewGlob of
+                                "none" -> ""
+                                glob -> glob
                         fullPath <- liftIO $ canonicalizePath' newPath
                         let editedGame =
                                 game
@@ -343,16 +348,25 @@ editGame gName mNewName mNewPath mNewGlob = do
                                             ++ fullPath
                                 return Nothing
                             else do
-                                when (isJust mNewName) $
-                                    liftIO $ putStrLn $ "Name: " ++ gName ++ " -> " ++ newName
-                                when (isJust mNewPath) $
+                                liftIO $
+                                    putStrLn $
+                                        "Name: " ++ gName
+                                            ++ case mNewName of
+                                                Just _ -> " -> " ++ newName
+                                                Nothing -> ""
+                                liftIO $
+                                    putStrLn $
+                                        "Save path: " ++ gamePath game
+                                            ++ case mNewPath of
+                                                Just _ -> " -> " ++ fullPath
+                                                Nothing -> ""
+                                when (not (null (gameGlob game)) || isJust mNewGlob) $
                                     liftIO $
                                         putStrLn $
-                                            "Save path: " ++ gamePath game ++ " -> " ++ fullPath
-                                when (isJust mNewGlob) $
-                                    liftIO $
-                                        putStrLn $
-                                            "Save glob: " ++ gameGlob game ++ " -> " ++ newGlob
+                                            "Save glob: " ++ gameGlob game
+                                                ++ case mNewGlob of
+                                                    Just _ -> " -> " ++ newGlob
+                                                    Nothing -> ""
 
                                 backupDirExists <-
                                     liftIO $ doesDirectoryExist $ configBackupDir config </> gName
@@ -422,8 +436,8 @@ backupGame :: (MonadIO m, MonadReader Config m) => String -> Logger m ()
 backupGame gName = do
     config <- ask
     startTime <- liftIO getCurrentTime
-    mgName <- getGameByName gName
-    case mgName of
+    mGame <- getGameByName gName
+    case mGame of
         Just game -> do
             isDirectory <- liftIO $ doesDirectoryExist $ gamePath game
             if isDirectory

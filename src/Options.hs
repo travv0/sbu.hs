@@ -103,7 +103,7 @@ addParser =
                     ( long "path"
                         <> short 'p'
                         <> metavar "SAVE_PATH"
-                        <> help "Save path"
+                        <> help "Path to added game's save files"
                     )
                 <*> option
                     maybeStr
@@ -111,7 +111,11 @@ addParser =
                         <> short 'g'
                         <> metavar "SAVE_FILE_GLOB"
                         <> value Nothing
-                        <> help "Save file glob"
+                        <> help
+                            "Save file glob for added game's save files. \
+                            \Only files matching this pattern will be backed up. \
+                            \The default is **/* which will recursively back up \
+                            \all saves in SAVE_PATH"
                     )
             )
 
@@ -123,7 +127,8 @@ infoParser =
                 str
                 ( metavar "GAMES..."
                     <> help
-                        "List of games to display info for.  If not provided, will display info for all games"
+                        "List of games to display info for.  If not provided, will display \
+                        \info for all games"
                 )
             )
 
@@ -154,7 +159,9 @@ editParser =
                         <> short 'n'
                         <> metavar "NEW_NAME"
                         <> value Nothing
-                        <> help "New name"
+                        <> help
+                            "Set game name to NEW_NAME. This will also update the directory \
+                            \name in your backup directory"
                     )
                 <*> option
                     maybeStr
@@ -162,7 +169,7 @@ editParser =
                         <> short 'p'
                         <> metavar "NEW_SAVE_PATH"
                         <> value Nothing
-                        <> help "New save path"
+                        <> help "Set game's save path to NEW_SAVE_PATH"
                     )
                 <*> option
                     maybeStr
@@ -170,7 +177,7 @@ editParser =
                         <> short 'g'
                         <> metavar "NEW_SAVE_FILE_GLOB"
                         <> value Nothing
-                        <> help "New save file glob"
+                        <> help "Set game's save file glob to NEW_SAVE_FILE_GLOB. Setting this to an empty string or \"none\" implies the glob **/* which will recursively back up all files"
                     )
             )
 
@@ -184,7 +191,7 @@ configParser =
                         <> short 'p'
                         <> metavar "BACKUP_PATH"
                         <> value Nothing
-                        <> help "Path to directory in which to back up saves"
+                        <> help "Set path to directory in which to back up saves"
                     )
                 <*> option
                     maybeAuto
@@ -192,7 +199,7 @@ configParser =
                         <> short 'f'
                         <> metavar "BACKUP_FREQUENCY"
                         <> value Nothing
-                        <> help "Frequency in minutes to backup saves when looping"
+                        <> help "Set frequency in minutes to backup saves when looping"
                     )
                 <*> option
                     maybeAuto
@@ -200,14 +207,13 @@ configParser =
                         <> short 'k'
                         <> metavar "BACKUPS_TO_KEEP"
                         <> value Nothing
-                        <> help "How many copies of each backed-up file to keep"
+                        <> help "Set how many copies of each backed-up file to keep"
                     )
                 <|> flag'
                     ConfigDefaults
                     ( long "use-defaults"
-                        <> short 'd'
                         <> help
-                            "Keep running, backing up games at the interval specified in your config file"
+                            "Reset config to use default values"
                     )
             )
 

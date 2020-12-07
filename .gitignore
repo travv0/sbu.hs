@@ -2,3 +2,5 @@
 sbu.cabal
 *~
 tags
+dist
+dist-newstyle
