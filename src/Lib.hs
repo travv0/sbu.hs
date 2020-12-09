@@ -182,7 +182,7 @@ readConfig path = do
         else return $ Left $ "Error opening file at `" ++ path ++ "'."
 
 writeConfig :: FilePath -> Config -> IO ()
-writeConfig path config = do
+writeConfig path config = withLockFile $ do
     configExists <- doesFileExist path
     when configExists $ renameFile path $ path <.> "bak"
     BS.writeFile path $ encode config
@@ -193,18 +193,18 @@ maybeWriteConfig path config = forM_ config (writeConfig path)
 handleCommand :: Command -> FilePath -> Sbu
 handleCommand (AddCmd (AddOptions game savePath glob)) path = do
     config <- addGame game savePath glob
-    liftIO $ withLockFile $ maybeWriteConfig path config
+    liftIO $ maybeWriteConfig path config
 handleCommand ListCmd _ = listGames
 handleCommand (InfoCmd (InfoOptions games)) _ = infoGames games
 handleCommand (RemoveCmd (RemoveOptions games yes)) path = do
     config <- removeGames yes games
-    liftIO $ withLockFile $ maybeWriteConfig path config
+    liftIO $ maybeWriteConfig path config
 handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) path = do
     config <- editGame game mNewName mNewPath mNewGlob
-    liftIO $ withLockFile $ maybeWriteConfig path config
+    liftIO $ maybeWriteConfig path config
 handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) path = do
     config <- editConfig mBackupDir mBackupFreq mBackupsToKeep
-    liftIO $ withLockFile $ maybeWriteConfig path config
+    liftIO $ maybeWriteConfig path config
 handleCommand (ConfigCmd ConfigDefaults) path = do
     dc <- liftIO defaultConfig
     config <-
@@ -212,7 +212,7 @@ handleCommand (ConfigCmd ConfigDefaults) path = do
             (Just $ configBackupDir dc)
             (Just $ configBackupFreq dc)
             (Just $ configBackupsToKeep dc)
-    liftIO $ withLockFile $ maybeWriteConfig path config
+    liftIO $ maybeWriteConfig path config
 handleCommand (BackupCmd (BackupOptions games loop)) _ = backupGames loop games
 
 addGame ::
