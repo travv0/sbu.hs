@@ -25,6 +25,7 @@ import Data.Time (
  )
 import Foreign.C.Error (Errno (Errno), ePIPE)
 import qualified GHC.IO.Exception as G
+import Options
 import Pipes (Consumer', await, runEffect, yield, (>->))
 import System.Directory (
     canonicalizePath,
@@ -52,10 +53,8 @@ import System.FilePath (
  )
 import System.FilePath.Glob (compile, globDir1, match)
 import System.IO (hFlush, stdout)
-import UnliftIO (MonadUnliftIO, finally)
-
-import Options
 import Types
+import UnliftIO (MonadUnliftIO, finally)
 
 defaultGlob :: String
 defaultGlob = "**/*"
@@ -107,11 +106,13 @@ defaultConfig = do
     home <- getHomeDirectory
     return $ Config (home </> "sbu_backups") 15 20 []
 
-stdoutAndLog :: MonadIO m => Consumer' String m ()
+stdoutAndLog :: MonadIO m => Consumer' String m (Maybe Config)
 stdoutAndLog = do
     logsDir <- liftIO defaultLogsDir
     liftIO $ createDirectoryIfMissing True logsDir
     go logsDir
+    -- TODO find out if there's a way to have a return type of Consumer' String m ()
+    return Nothing
   where
     go logsDir = do
         now <- liftIO getCurrentTime
@@ -131,7 +132,7 @@ stdoutAndLog = do
             Left e -> liftIO (throwIO e)
             Right () -> go logsDir
 
-runSbu :: Sbu -> Config -> IO ()
+runSbu :: Sbu -> Config -> IO (Maybe Config)
 runSbu sbu = runReaderT $ runEffect (sbu >-> stdoutAndLog)
 
 handleOptions :: SbuOptions -> IO ()
@@ -152,7 +153,8 @@ handleOptions (SbuOptions configPath command) = do
                         Right c -> return c
                         Left _ -> createDefaultConfig path
                 else createDefaultConfig path
-    _ <- runSbu (handleCommand command path) config
+    newConfig <- runSbu (handleCommand command) config
+    liftIO $ maybeWriteConfig path newConfig
     return ()
 
 createDefaultConfig :: FilePath -> IO Config
@@ -190,30 +192,22 @@ writeConfig path config = withLockFile $ do
 maybeWriteConfig :: FilePath -> Maybe Config -> IO ()
 maybeWriteConfig path config = forM_ config (writeConfig path)
 
-handleCommand :: Command -> FilePath -> Sbu
-handleCommand (AddCmd (AddOptions game savePath glob)) path = do
-    config <- addGame game savePath glob
-    liftIO $ maybeWriteConfig path config
-handleCommand ListCmd _ = listGames
-handleCommand (InfoCmd (InfoOptions games)) _ = infoGames games
-handleCommand (RemoveCmd (RemoveOptions games yes)) path = do
-    config <- removeGames yes games
-    liftIO $ maybeWriteConfig path config
-handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) path = do
-    config <- editGame game mNewName mNewPath mNewGlob
-    liftIO $ maybeWriteConfig path config
-handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) path = do
-    config <- editConfig mBackupDir mBackupFreq mBackupsToKeep
-    liftIO $ maybeWriteConfig path config
-handleCommand (ConfigCmd ConfigDefaults) path = do
+handleCommand :: Command -> Sbu
+handleCommand (AddCmd (AddOptions game savePath glob)) = addGame game savePath glob
+handleCommand ListCmd = listGames
+handleCommand (InfoCmd (InfoOptions games)) = infoGames games
+handleCommand (RemoveCmd (RemoveOptions games yes)) = removeGames yes games
+handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) =
+    editGame game mNewName mNewPath mNewGlob
+handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) =
+    editConfig mBackupDir mBackupFreq mBackupsToKeep
+handleCommand (ConfigCmd ConfigDefaults) = do
     dc <- liftIO defaultConfig
-    config <-
-        editConfig
-            (Just $ configBackupDir dc)
-            (Just $ configBackupFreq dc)
-            (Just $ configBackupsToKeep dc)
-    liftIO $ maybeWriteConfig path config
-handleCommand (BackupCmd (BackupOptions games loop)) _ = backupGames loop games
+    editConfig
+        (Just $ configBackupDir dc)
+        (Just $ configBackupFreq dc)
+        (Just $ configBackupsToKeep dc)
+handleCommand (BackupCmd (BackupOptions games loop)) = backupGames loop games
 
 addGame ::
     (MonadIO m, MonadReader Config m) =>
@@ -254,10 +248,11 @@ canonicalizePath' ('~' : path) = do
     canonicalizePath $ homeDir </> trimmedPath
 canonicalizePath' path = canonicalizePath path
 
-listGames :: (MonadIO m, MonadReader Config m) => m ()
+listGames :: (MonadIO m, MonadReader Config m) => m (Maybe Config)
 listGames = do
     gNames <- gameNames
     liftIO $ putStrLn $ intercalate "\n" gNames
+    return Nothing
 
 removeGames :: (MonadIO m, MonadReader Config m) => Bool -> [String] -> m (Maybe Config)
 removeGames yes games = do
@@ -289,10 +284,11 @@ removeGames yes games = do
                         { configGames = filter (`notElem` gamesToRemove) $ configGames config
                         }
 
-infoGames :: (MonadIO m, MonadReader Config m) => [String] -> m ()
+infoGames :: (MonadIO m, MonadReader Config m) => [String] -> m (Maybe Config)
 infoGames games = do
     gNames <- gameNames
     if null games then mapM_ infoGame gNames else mapM_ infoGame games
+    return Nothing
 
 editGame ::
     (MonadIO m, MonadReader Config m) =>
@@ -422,14 +418,16 @@ editConfig mBackupDir mBackupFreq mBackupsToKeep = do
                         , configBackupsToKeep = newBackupsToKeep
                         }
 
-backupGames :: (MonadIO m, MonadReader Config m) => Bool -> [String] -> Logger m ()
+backupGames :: (MonadIO m, MonadReader Config m) => Bool -> [String] -> Logger m (Maybe Config)
 backupGames loop games = do
     config <- ask
     gNames <- gameNames
     mapM_ backupGame $ if null games then gNames else games
-    when loop $ do
-        liftIO $ threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
-        backupGames loop games
+    if loop
+        then do
+            liftIO $ threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
+            backupGames loop games
+        else return Nothing
 
 backupGame :: (MonadIO m, MonadReader Config m) => String -> Logger m ()
 backupGame gName = do

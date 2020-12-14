@@ -15,7 +15,7 @@ import Data.String (IsString)
 import Options.Applicative hiding (infoParser)
 
 version :: String
-version = "2.0.2"
+version = "2.0.3"
 
 data SbuOptions = SbuOptions
     { sbuConfigPath :: Maybe FilePath

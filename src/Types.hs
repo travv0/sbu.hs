@@ -12,7 +12,7 @@ import Data.Serialize (Serialize)
 import GHC.Generics (Generic)
 import Pipes (Producer)
 
-type Sbu = Logger (ReaderT Config IO) ()
+type Sbu = Logger (ReaderT Config IO) (Maybe Config)
 
 type Logger m = Producer String m
 
