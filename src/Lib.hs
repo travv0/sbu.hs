@@ -228,7 +228,7 @@ addGame game path glob = do
             liftIO $
                 putStrLn $
                     "Error: Game with the name " ++ game ++ " already exists"
-            return $ Just config
+            return Nothing
         else do
             fullPath <- liftIO $ canonicalizePath' path
             if isRelative fullPath
@@ -252,8 +252,7 @@ canonicalizePath' ('~' : path) = do
     let trimmedPath = dropWhile (\c -> c == '/' || c == '\\') path
     homeDir <- getHomeDirectory
     canonicalizePath $ homeDir </> trimmedPath
-canonicalizePath' path = do
-    canonicalizePath path
+canonicalizePath' path = canonicalizePath path
 
 listGames :: (MonadIO m, MonadReader Config m) => m ()
 listGames = do
