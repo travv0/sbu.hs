@@ -489,33 +489,13 @@ backupFile basePath glob from to = do
     isDirectory <- liftIO $ doesDirectoryExist from
     if isDirectory
         then backupFiles basePath glob from to
-        else do
-            backupExists <- liftIO $ doesFileExist to
-            fromModTime <- liftIO $ getModificationTime from
-            mToModTime <-
-                if backupExists
-                    then liftIO $ Just <$> getModificationTime to
-                    else return Nothing
-            case mToModTime of
-                Just toModTime ->
-                    if fromModTime
-                        { utctDayTime =
-                            secondsToDiffTime $ round $ utctDayTime fromModTime
-                        }
-                        /= toModTime
-                            { utctDayTime =
-                                secondsToDiffTime $ round $ utctDayTime toModTime
-                            }
-                        then do
-                            liftIO $
-                                renameFile to $
-                                    to <.> "bak" <.> formatModifiedTime toModTime
-                            copyAndCleanup
-                        else return False
-                Nothing -> copyAndCleanup
+        else
+            if globMatches
+                then backupFile'
+                else return False
   where
-    copyAndCleanup =
-        if match
+    globMatches =
+        match
             ( compile $
                 addTrailingPathSeparator basePath
                     ++ if null glob
@@ -523,13 +503,36 @@ backupFile basePath glob from to = do
                         else glob
             )
             from
-            then do
-                liftIO $ createDirectoryIfMissing True $ dropFileName to
-                yield $ from ++ " ==>\n\t\t" ++ to
-                liftIO $ copyFileWithMetadata from to
-                cleanupBackups to
-                return True
-            else return False
+    backupFile' = do
+        backupExists <- liftIO $ doesFileExist to
+        fromModTime <- liftIO $ getModificationTime from
+        mToModTime <-
+            if backupExists
+                then liftIO $ Just <$> getModificationTime to
+                else return Nothing
+        case mToModTime of
+            Just toModTime ->
+                if fromModTime
+                    { utctDayTime =
+                        secondsToDiffTime $ round $ utctDayTime fromModTime
+                    }
+                    /= toModTime
+                        { utctDayTime =
+                            secondsToDiffTime $ round $ utctDayTime toModTime
+                        }
+                    then do
+                        liftIO $
+                            renameFile to $
+                                to <.> "bak" <.> formatModifiedTime toModTime
+                        copyAndCleanup
+                    else return False
+            Nothing -> copyAndCleanup
+    copyAndCleanup = do
+        liftIO $ createDirectoryIfMissing True $ dropFileName to
+        yield $ from ++ " ==>\n\t\t" ++ to
+        liftIO $ copyFileWithMetadata from to
+        cleanupBackups to
+        return True
 
 cleanupBackups :: (MonadIO m, MonadReader Config m) => FilePath -> Logger m ()
 cleanupBackups backupPath = do
