@@ -1,3 +1,5 @@
+{-# LANGUAGE TemplateHaskell #-}
+
 module Options (
     SbuOptions (..),
     Command (..),
@@ -11,11 +13,11 @@ module Options (
 ) where
 
 import Data.String (IsString)
+import Data.Version (showVersion)
+import Development.GitRev (gitHash)
+import Paths_sbu (version)
 
 import Options.Applicative hiding (infoParser)
-
-version :: String
-version = "2.0.4"
 
 data SbuOptions = SbuOptions
     { sbuConfigPath :: Maybe FilePath
@@ -229,7 +231,7 @@ opts =
                 <> help "Path to configuration file"
             )
         <*> ( infoOption
-                ("sbu version " ++ version)
+                (concat ["sbu v", showVersion version, " ", $(gitHash)])
                 (long "version" <> short 'v' <> help "Print version information")
                 <*> commands
             )
