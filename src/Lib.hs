@@ -343,25 +343,10 @@ editGame gName mNewName mNewPath mNewGlob = do
                                             ++ fullPath
                                 return Nothing
                             else do
-                                liftIO $
-                                    putStrLn $
-                                        "Name: " ++ gName
-                                            ++ case mNewName of
-                                                Just _ -> " -> " ++ newName
-                                                Nothing -> ""
-                                liftIO $
-                                    putStrLn $
-                                        "Save path: " ++ gamePath game
-                                            ++ case mNewPath of
-                                                Just _ -> " -> " ++ fullPath
-                                                Nothing -> ""
+                                liftIO $ printConfigRow "Name" gName newName
+                                liftIO $ printConfigRow "Save path" (gamePath game) fullPath
                                 when (not (null (gameGlob game)) || isJust mNewGlob) $
-                                    liftIO $
-                                        putStrLn $
-                                            "Save glob: " ++ gameGlob game
-                                                ++ case mNewGlob of
-                                                    Just _ -> " -> " ++ newGlob
-                                                    Nothing -> ""
+                                    liftIO $ printConfigRow "Save glob" (gameGlob game) newGlob
 
                                 backupDirExists <-
                                     liftIO $ doesDirectoryExist $ configBackupDir config </> gName
@@ -375,6 +360,14 @@ editGame gName mNewName mNewPath mNewGlob = do
 
                                 return $ Just $ config{configGames = front ++ (editedGame : back)}
 
+printConfigRow :: String -> String -> String -> IO ()
+printConfigRow label val newVal =
+    putStrLn $
+        label ++ ": " ++ val
+            ++ if val == newVal
+                then ""
+                else " -> " ++ newVal
+
 editConfig ::
     (MonadIO m, MonadReader Config m) =>
     Maybe FilePath ->
@@ -383,8 +376,8 @@ editConfig ::
     m (Maybe Config)
 editConfig mBackupDir mBackupFreq mBackupsToKeep = do
     config <- ask
-    let newBackupDir = fromMaybe (configBackupDir config) mBackupDir
-        newBackupFreq = fromMaybe (configBackupFreq config) mBackupFreq
+    newBackupDir <- liftIO $ canonicalizePath' $ fromMaybe (configBackupDir config) mBackupDir
+    let newBackupFreq = fromMaybe (configBackupFreq config) mBackupFreq
         newBackupsToKeep = fromMaybe (configBackupsToKeep config) mBackupsToKeep
 
     if isRelative newBackupDir
@@ -395,21 +388,17 @@ editConfig mBackupDir mBackupFreq mBackupsToKeep = do
                         ++ newBackupDir
             return Nothing
         else do
+            liftIO $ printConfigRow "Backup path" (configBackupDir config) newBackupDir
             liftIO $
-                putStrLn $
-                    "Backup path: "
-                        ++ configBackupDir config
-                        ++ if isJust mBackupDir then " -> " ++ newBackupDir else ""
+                printConfigRow
+                    "Backup frequency (in minutes)"
+                    (show $ configBackupFreq config)
+                    (show newBackupFreq)
             liftIO $
-                putStrLn $
-                    "Backup frequency (in minutes): "
-                        ++ show (configBackupFreq config)
-                        ++ if isJust mBackupFreq then " -> " ++ show newBackupFreq else ""
-            liftIO $
-                putStrLn $
-                    "Number of backups to keep: "
-                        ++ show (configBackupsToKeep config)
-                        ++ if isJust mBackupsToKeep then " -> " ++ show newBackupsToKeep else ""
+                printConfigRow
+                    "Number of backups to keep"
+                    (show $ configBackupsToKeep config)
+                    (show newBackupsToKeep)
             return $
                 Just $
                     config
