@@ -281,7 +281,7 @@ removeGames yes games = do
             return $
                 Just $
                     config
-                        { configGames = filter (`notElem` gamesToRemove) $ configGames config
+                        { configGames = filter ((`notElem` map gameName gamesToRemove) . gameName) $ configGames config
                         }
 
 infoGames :: (MonadIO m, MonadReader Config m) => [String] -> m (Maybe Config)
@@ -315,7 +315,7 @@ editGame gName mNewName mNewPath mNewGlob = do
                             ++ " doesn't exist"
                 return Nothing
             Just g -> do
-                let i = elemIndex g (configGames config)
+                let i = elemIndex (gameName g) $ map gameName (configGames config)
                     mSplitList = splitAt <$> i <*> pure (configGames config)
                 case mSplitList of
                     Nothing -> do

@@ -31,8 +31,5 @@ data Game = Game
     }
     deriving (Show, Generic)
 
-instance Eq Game where
-    a == b = gameName a == gameName b
-
 instance Serialize Config
 instance Serialize Game
