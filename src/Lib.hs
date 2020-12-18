@@ -3,7 +3,6 @@
 module Lib (handleOptions) where
 
 import Control.Concurrent (threadDelay)
-import Control.Exception (throwIO, try)
 import Control.Monad (filterM, forM_, when)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.ListM (sortByM)
@@ -54,7 +53,7 @@ import System.FilePath (
 import System.FilePath.Glob (compile, globDir1, match)
 import System.IO (hFlush, stdout)
 import Types
-import UnliftIO (MonadUnliftIO, finally)
+import UnliftIO (MonadUnliftIO, finally, throwIO, try)
 
 defaultGlob :: String
 defaultGlob = "**/*"
