@@ -1,5 +1,5 @@
 name:                sbu
-version:             2.0.8
+version:             2.1.0
 github:              "tssund93/sbu"
 license:             BSD3
 author:              "Travis"
@@ -21,18 +21,18 @@ description:         Please see the README on GitHub at <https://github.com/tssu
 
 dependencies:
 - base >= 4.7 && < 5
-- optparse-applicative
-- directory
-- filepath
-- cereal
-- bytestring
-- time
 - Glob >= 0.10.0
+- bytestring
+- cereal
+- directory
+- exceptions
+- filepath
+- gitrev
 - monadlist
 - mtl
-- unliftio
+- optparse-applicative
 - pipes
-- gitrev
+- time
 
 library:
   source-dirs: src

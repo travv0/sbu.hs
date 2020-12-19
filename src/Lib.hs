@@ -1,9 +1,11 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiWayIf #-}
 
 module Lib (handleOptions) where
 
 import Control.Concurrent (threadDelay)
 import Control.Monad (filterM, forM_, when)
+import Control.Monad.Catch (MonadCatch, MonadMask, catchIOError, finally, try)
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.ListM (sortByM)
 import Control.Monad.Reader (MonadReader (ask), ReaderT (runReaderT), asks)
@@ -51,9 +53,8 @@ import System.FilePath (
     (</>),
  )
 import System.FilePath.Glob (compile, globDir1, match)
-import System.IO (hFlush, stdout)
+import System.IO (hFlush, hPutStrLn, stderr, stdout)
 import Types
-import UnliftIO (MonadUnliftIO, finally, throwIO, try)
 
 defaultGlob :: String
 defaultGlob = "**/*"
@@ -82,7 +83,7 @@ createLockFile = do
     locked <- doesFileExist lockPath
     if locked
         then do
-            putStrLn $
+            hPutStrLn stderr $
                 "sbu appears to be already running.  If it's not, delete the file `"
                     ++ lockPath
                     ++ "' and try again"
@@ -95,7 +96,7 @@ deleteLockFile = do
     locked <- doesFileExist lockPath
     when locked $ removeFile lockPath
 
-withLockFile :: MonadUnliftIO m => m () -> m ()
+withLockFile :: (MonadIO m, MonadMask m) => m () -> m ()
 withLockFile f = do
     liftIO createLockFile
     f `finally` liftIO deleteLockFile
@@ -116,20 +117,22 @@ stdoutAndLog = do
     go logsDir = do
         now <- liftIO getCurrentTime
         str <- await
-        x <- liftIO $
-            try $ do
-                putStrLn str
-                appendFile
-                    (logsDir </> show (utctDay now) <.> "log")
-                    ( unlines $
-                        map ((formatTime defaultTimeLocale "%X" now ++ ": ") ++) $
-                            lines str
-                    )
+        x <- liftIO $ try $ logStr logsDir str now
         case x of
             Left G.IOError{G.ioe_type = G.ResourceVanished, G.ioe_errno = Just ioe}
                 | Errno ioe == ePIPE -> return ()
-            Left e -> liftIO (throwIO e)
+            Left e -> do
+                liftIO $ logStr logsDir ("Error: " ++ show e) now
+                go logsDir
             Right () -> go logsDir
+    logStr logsDir str now = do
+        hPutStrLn stderr str
+        appendFile
+            (logsDir </> show (utctDay now) <.> "log")
+            ( unlines $
+                map ((formatTime defaultTimeLocale "%X" now ++ ": ") ++) $
+                    lines str
+            )
 
 runSbu :: Sbu -> Config -> IO (Maybe Config)
 runSbu sbu = runReaderT $ runEffect (sbu >-> stdoutAndLog)
@@ -145,7 +148,8 @@ handleOptions (SbuOptions configPath command) = do
             backupExists <- doesFileExist backupPath
             if backupExists
                 then do
-                    putStrLn
+                    hPutStrLn
+                        stderr
                         "Error reading config file, attempting to read from backup..."
                     backupConfig <- BS.readFile backupPath
                     case decode backupConfig of
@@ -166,7 +170,7 @@ createDefaultConfig path = do
 
 printCreatedConfigMsg :: FilePath -> Config -> IO ()
 printCreatedConfigMsg path config =
-    putStrLn $
+    hPutStrLn stderr $
         "Creating new config file at `" ++ path ++ "'.\n"
             ++ "Use the `config' command to update default values, which are:\n"
             ++ ("Backup directory: " ++ configBackupDir config ++ "\n")
@@ -208,6 +212,12 @@ handleCommand (ConfigCmd ConfigDefaults) = do
         (Just $ configBackupsToKeep dc)
 handleCommand (BackupCmd (BackupOptions games loop)) = backupGames loop games
 
+validGameNameChars :: [Char]
+validGameNameChars = ['A' .. 'z'] ++ ['0' .. '9'] ++ ['-', '_', '/']
+
+isValidGameName :: String -> Bool
+isValidGameName = all (`elem` validGameNameChars)
+
 addGame ::
     (MonadIO m, MonadReader Config m) =>
     String ->
@@ -216,29 +226,35 @@ addGame ::
     m (Maybe Config)
 addGame game path glob = do
     config <- ask
-    if game `elem` map gameName (configGames config)
-        then do
-            liftIO $
-                putStrLn $
-                    "Error: Game with the name " ++ game ++ " already exists"
-            return Nothing
-        else do
-            fullPath <- liftIO $ canonicalizePath' path
-            if isRelative fullPath
-                then do
-                    liftIO $
-                        putStrLn $
-                            "Error: Save path must be absolute, but relative path was supplied: "
-                                ++ fullPath
-                    return Nothing
-                else do
-                    let newGlob = case fromMaybe "" glob of
-                            "none" -> ""
-                            g -> g
-                        newGame = Game game fullPath newGlob
-                    liftIO $ putStrLn "Game added successfully:\n"
-                    printGame newGame
-                    return $ Just $ config{configGames = newGame : configGames config}
+    if
+            | game `elem` map gameName (configGames config) -> do
+                liftIO $
+                    hPutStrLn stderr $
+                        "Error: Game with the name " ++ game ++ " already exists"
+                return Nothing
+            | not $ isValidGameName game -> do
+                liftIO $
+                    hPutStrLn stderr $
+                        "Error: Invalid characters in name `" ++ game
+                            ++ "': only alphanumeric characters, `_', `-', and `/' are allowed"
+                return Nothing
+            | otherwise -> do
+                fullPath <- liftIO $ canonicalizePath' path
+                if isRelative fullPath
+                    then do
+                        liftIO $
+                            hPutStrLn stderr $
+                                "Error: Save path must be absolute, but relative path was supplied: "
+                                    ++ fullPath
+                        return Nothing
+                    else do
+                        let newGlob = case fromMaybe "" glob of
+                                "none" -> ""
+                                g -> g
+                            newGame = Game game fullPath newGlob
+                        liftIO $ hPutStrLn stderr "Game added successfully:\n"
+                        printGame newGame
+                        return $ Just $ config{configGames = newGame : configGames config}
 
 canonicalizePath' :: FilePath -> IO FilePath
 canonicalizePath' ('~' : path) = do
@@ -256,37 +272,39 @@ listGames = do
 removeGames :: (MonadIO m, MonadReader Config m) => Bool -> [String] -> m (Maybe Config)
 removeGames yes games = do
     config <- ask
+    gamesToRemove <- gameNameGlobExpand games
     if yes
         then do
             liftIO $
                 putStrLn $
                     "Removed the following games:\n"
-                        ++ intercalate "\n" games
+                        ++ intercalate "\n" gamesToRemove
             return $
                 Just $
                     config
                         { configGames =
-                            filter ((`notElem` games) . gameName) $
+                            filter ((`notElem` gamesToRemove) . gameName) $
                                 configGames config
                         }
         else do
-            warnMissingGames games
-            gamesToRemove <-
+            warnMissingGames gamesToRemove
+            gamesAnsweredYes <-
                 liftIO $
                     filterM promptRemove $
-                        filter ((`elem` games) . gameName) $
+                        filter ((`elem` gamesToRemove) . gameName) $
                             configGames config
-            mapM_ (\g -> liftIO $ putStrLn $ "Removed " ++ gameName g) gamesToRemove
+            mapM_ (\g -> liftIO $ putStrLn $ "Removed " ++ gameName g) gamesAnsweredYes
             return $
                 Just $
                     config
-                        { configGames = filter ((`notElem` map gameName gamesToRemove) . gameName) $ configGames config
+                        { configGames = filter ((`notElem` map gameName gamesAnsweredYes) . gameName) $ configGames config
                         }
 
 infoGames :: (MonadIO m, MonadReader Config m) => [String] -> m (Maybe Config)
 infoGames games = do
-    gNames <- gameNames
-    if null games then mapM_ infoGame gNames else mapM_ infoGame games
+    allGameNames <- gameNames
+    gamesToShow <- if null games then return allGameNames else gameNameGlobExpand games
+    mapM_ infoGame gamesToShow
     return Nothing
 
 editGame ::
@@ -302,13 +320,14 @@ editGame gName mNewName mNewPath mNewGlob = do
     case (mNewName, mNewPath, mNewGlob) of
         (Nothing, Nothing, Nothing) -> do
             liftIO $
-                putStrLn
+                hPutStrLn
+                    stderr
                     "One or more of --name, --path, or --glob must be provided."
             return Nothing
         _ -> case mGame of
             Nothing -> do
                 liftIO $
-                    putStrLn $
+                    hPutStrLn stderr $
                         "Error: Game with the name "
                             ++ gName
                             ++ " doesn't exist"
@@ -334,30 +353,36 @@ editGame gName mNewName mNewPath mNewGlob = do
                                     , gamePath = fullPath
                                     , gameGlob = newGlob
                                     }
-                        if isRelative fullPath
-                            then do
-                                liftIO $
-                                    putStrLn $
-                                        "Error: Save path must be absolute, but relative path was supplied: "
-                                            ++ fullPath
-                                return Nothing
-                            else do
-                                liftIO $ printConfigRow "Name" gName newName
-                                liftIO $ printConfigRow "Save path" (gamePath game) fullPath
-                                when (not (null (gameGlob game)) || isJust mNewGlob) $
-                                    liftIO $ printConfigRow "Save glob" (gameGlob game) newGlob
-
-                                backupDirExists <-
-                                    liftIO $ doesDirectoryExist $ configBackupDir config </> gName
-                                when (isJust mNewName && backupDirExists) $ do
+                        if
+                                | isRelative fullPath -> do
                                     liftIO $
-                                        putStrLn "Game name changed, renaming backup directory..."
+                                        hPutStrLn stderr $
+                                            "Error: Save path must be absolute, but relative path was supplied: "
+                                                ++ fullPath
+                                    return Nothing
+                                | not $ isValidGameName newName -> do
                                     liftIO $
-                                        renameDirectory
-                                            (configBackupDir config </> gName)
-                                            (configBackupDir config </> newName)
+                                        hPutStrLn stderr $
+                                            "Error: Invalid characters in name `" ++ newName
+                                                ++ "': only alphanumeric characters, `_', `-', and `/' are allowed"
+                                    return Nothing
+                                | otherwise -> do
+                                    liftIO $ printConfigRow "Name" gName newName
+                                    liftIO $ printConfigRow "Save path" (gamePath game) fullPath
+                                    when (not (null (gameGlob game)) || isJust mNewGlob) $
+                                        liftIO $ printConfigRow "Save glob" (gameGlob game) newGlob
 
-                                return $ Just $ config{configGames = front ++ (editedGame : back)}
+                                    backupDirExists <-
+                                        liftIO $ doesDirectoryExist $ configBackupDir config </> gName
+                                    when (isJust mNewName && backupDirExists) $ do
+                                        liftIO $
+                                            hPutStrLn stderr "Game name changed, renaming backup directory..."
+                                        liftIO $
+                                            renameDirectory
+                                                (configBackupDir config </> gName)
+                                                (configBackupDir config </> newName)
+
+                                    return $ Just $ config{configGames = front ++ (editedGame : back)}
 
 printConfigRow :: String -> String -> String -> IO ()
 printConfigRow label val newVal =
@@ -382,7 +407,7 @@ editConfig mBackupDir mBackupFreq mBackupsToKeep = do
     if isRelative newBackupDir
         then do
             liftIO $
-                putStrLn $
+                hPutStrLn stderr $
                     "Error: Backup path must be absolute, but relative path was supplied: "
                         ++ newBackupDir
             return Nothing
@@ -406,11 +431,33 @@ editConfig mBackupDir mBackupFreq mBackupsToKeep = do
                         , configBackupsToKeep = newBackupsToKeep
                         }
 
-backupGames :: (MonadIO m, MonadReader Config m) => Bool -> [String] -> Logger m (Maybe Config)
+gameNameGlobExpand :: MonadReader Config m => [String] -> m [String]
+gameNameGlobExpand globs = do
+    names <- gameNames
+    return $
+        concatMap
+            ( \glob ->
+                filter
+                    ( \name ->
+                        match (compile glob) name
+                            || match (compile $ glob ++ "/**/*") name
+                    )
+                    names
+            )
+            globs
+
+backupGames ::
+    (MonadIO m, MonadReader Config m, MonadCatch m) =>
+    Bool ->
+    [String] ->
+    Logger m (Maybe Config)
 backupGames loop games = do
     config <- ask
-    gNames <- gameNames
-    mapM_ backupGame $ if null games then gNames else games
+    allGameNames <- gameNames
+    gamesToBackup <- if null games then return allGameNames else gameNameGlobExpand games
+    mapM_
+        (\game -> backupGame game `catchIOError` \e -> yield $ "Error: " ++ show e)
+        gamesToBackup
     if loop
         then do
             liftIO $ threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
@@ -577,7 +624,7 @@ printGame game =
                     then ""
                     else "Save glob: " ++ gameGlob game ++ "\n"
 
-gameNames :: (MonadIO m, MonadReader Config m) => m [String]
+gameNames :: MonadReader Config m => m [String]
 gameNames = asks $ sort . map gameName . configGames
 
 promptRemove :: Game -> IO Bool
@@ -594,7 +641,7 @@ warnMissingGames games = do
         mapM_
             ( \g ->
                 when (g `notElem` map gameName (configGames config)) $
-                    putStrLn $
+                    hPutStrLn stderr $
                         "Warning: No game named `"
                             ++ g
                             ++ "'"
