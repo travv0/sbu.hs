@@ -106,8 +106,8 @@ defaultConfig = do
     home <- getHomeDirectory
     return $ Config (home </> "sbu_backups") 15 20 []
 
-stdoutAndLog :: MonadIO m => Consumer' String m (Maybe Config)
-stdoutAndLog = do
+printAndLog :: MonadIO m => Consumer' String m (Maybe Config)
+printAndLog = do
     logsDir <- liftIO defaultLogsDir
     liftIO $ createDirectoryIfMissing True logsDir
     go logsDir
@@ -135,7 +135,7 @@ stdoutAndLog = do
             )
 
 runSbu :: Sbu -> Config -> IO (Maybe Config)
-runSbu sbu = runReaderT $ runEffect (sbu >-> stdoutAndLog)
+runSbu sbu = runReaderT $ runEffect (sbu >-> printAndLog)
 
 handleOptions :: SbuOptions -> IO ()
 handleOptions (SbuOptions configPath command) = do
