@@ -439,7 +439,10 @@ backupGames loop games = do
     allGameNames <- gameNames
     let gamesToBackup = if null games then allGameNames else games
     mapM_
-        (\game -> backupGame game `catchIOError` \e -> yield $ "Error: " ++ show e)
+        ( \game ->
+            backupGame game `catchIOError` \e ->
+                yield $ "Error backing up " ++ game ++ ": " ++ show e
+        )
         gamesToBackup
     if loop
         then do
