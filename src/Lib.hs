@@ -213,7 +213,7 @@ handleCommand (ConfigCmd ConfigDefaults) = do
 handleCommand (BackupCmd (BackupOptions games loop)) = backupGames loop games
 
 validGameNameChars :: [Char]
-validGameNameChars = ['A' .. 'z'] ++ ['0' .. '9'] ++ ['-', '_', '/']
+validGameNameChars = ['A' .. 'z'] ++ ['0' .. '9'] ++ ['-', '_']
 
 isValidGameName :: String -> Bool
 isValidGameName = all (`elem` validGameNameChars)
@@ -236,7 +236,7 @@ addGame game path glob = do
                 liftIO $
                     hPutStrLn stderr $
                         "Error: Invalid characters in name `" ++ game
-                            ++ "': only alphanumeric characters, `_', `-', and `/' are allowed"
+                            ++ "': only alphanumeric characters, underscores, and hyphens are allowed"
                 return Nothing
             | otherwise -> do
                 fullPath <- liftIO $ canonicalizePath' path
@@ -272,39 +272,37 @@ listGames = do
 removeGames :: (MonadIO m, MonadReader Config m) => Bool -> [String] -> m (Maybe Config)
 removeGames yes games = do
     config <- ask
-    gamesToRemove <- gameNameGlobExpand games
     if yes
         then do
             liftIO $
                 putStrLn $
                     "Removed the following games:\n"
-                        ++ intercalate "\n" gamesToRemove
+                        ++ intercalate "\n" games
             return $
                 Just $
                     config
                         { configGames =
-                            filter ((`notElem` gamesToRemove) . gameName) $
+                            filter ((`notElem` games) . gameName) $
                                 configGames config
                         }
         else do
-            warnMissingGames gamesToRemove
-            gamesAnsweredYes <-
+            warnMissingGames games
+            gamesToRemove <-
                 liftIO $
                     filterM promptRemove $
-                        filter ((`elem` gamesToRemove) . gameName) $
+                        filter ((`elem` games) . gameName) $
                             configGames config
-            mapM_ (\g -> liftIO $ putStrLn $ "Removed " ++ gameName g) gamesAnsweredYes
+            mapM_ (\g -> liftIO $ putStrLn $ "Removed " ++ gameName g) gamesToRemove
             return $
                 Just $
                     config
-                        { configGames = filter ((`notElem` map gameName gamesAnsweredYes) . gameName) $ configGames config
+                        { configGames = filter ((`notElem` map gameName gamesToRemove) . gameName) $ configGames config
                         }
 
 infoGames :: (MonadIO m, MonadReader Config m) => [String] -> m (Maybe Config)
 infoGames games = do
     allGameNames <- gameNames
-    gamesToShow <- if null games then return allGameNames else gameNameGlobExpand games
-    mapM_ infoGame gamesToShow
+    mapM_ infoGame $ if null games then allGameNames else games
     return Nothing
 
 editGame ::
@@ -431,21 +429,6 @@ editConfig mBackupDir mBackupFreq mBackupsToKeep = do
                         , configBackupsToKeep = newBackupsToKeep
                         }
 
-gameNameGlobExpand :: MonadReader Config m => [String] -> m [String]
-gameNameGlobExpand globs = do
-    names <- gameNames
-    return $
-        concatMap
-            ( \glob ->
-                filter
-                    ( \name ->
-                        match (compile glob) name
-                            || match (compile $ glob ++ "/**/*") name
-                    )
-                    names
-            )
-            globs
-
 backupGames ::
     (MonadIO m, MonadReader Config m, MonadCatch m) =>
     Bool ->
@@ -454,7 +437,7 @@ backupGames ::
 backupGames loop games = do
     config <- ask
     allGameNames <- gameNames
-    gamesToBackup <- if null games then return allGameNames else gameNameGlobExpand games
+    let gamesToBackup = if null games then allGameNames else games
     mapM_
         (\game -> backupGame game `catchIOError` \e -> yield $ "Error: " ++ show e)
         gamesToBackup
