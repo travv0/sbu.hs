@@ -38,6 +38,7 @@ data Command
 data BackupOptions = BackupOptions
     { backupOptGames :: [String]
     , backupOptLoop :: Bool
+    , backupOptVerbose :: Bool
     }
     deriving (Show)
 
@@ -93,6 +94,11 @@ backupParser =
                         <> short 'l'
                         <> help
                             "Keep running, backing up games at the interval specified in your config file"
+                    )
+                <*> switch
+                    ( long "verbose"
+                        <> short 'v'
+                        <> help "Print verbose output"
                     )
             )
 
@@ -232,7 +238,7 @@ opts =
             )
         <*> ( infoOption
                 (concat ["sbu v", showVersion version, " ", $(gitHash)])
-                (long "version" <> short 'v' <> help "Print version information")
+                (long "version" <> help "Print version information")
                 <*> commands
             )
 
