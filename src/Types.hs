@@ -23,14 +23,14 @@ data Config = Config
     , configBackupsToKeep :: Integer
     , configGames :: [Game]
     }
-    deriving (Show, Generic)
+    deriving (Show, Generic, Eq)
 
 data Game = Game
     { gameName :: String
     , gamePath :: FilePath
     , gameGlob :: String
     }
-    deriving (Show, Generic)
+    deriving (Show, Generic, Eq)
 
 instance Serialize Config
 instance Serialize Game
