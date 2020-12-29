@@ -6,7 +6,7 @@ module Lib (handleOptions) where
 import Control.Concurrent (threadDelay)
 import Control.Monad (filterM, foldM, forM_, unless, when)
 import Control.Monad.Catch (MonadCatch, MonadMask, catchIOError, finally, try)
-import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.ListM (sortByM)
 import Control.Monad.Reader (MonadReader (ask), ReaderT (runReaderT), asks)
 import qualified Data.ByteString as BS
@@ -24,10 +24,8 @@ import Data.Time (
     secondsToDiffTime,
     utcToLocalTime,
  )
-import Foreign.C.Error (Errno (Errno), ePIPE)
-import qualified GHC.IO.Exception as G
 import Options
-import Pipes (Consumer', await, runEffect, yield, (>->))
+import Pipes (for, runEffect, yield)
 import System.Directory (
     canonicalizePath,
     copyFileWithMetadata,
@@ -106,25 +104,16 @@ defaultConfig = do
     home <- getHomeDirectory
     return $ Config (home </> "sbu_backups") 15 20 []
 
-printAndLog :: MonadIO m => Consumer' String m (Maybe Config)
-printAndLog = do
+printAndLog :: MonadIO m => String -> m ()
+printAndLog s = do
     logsDir <- liftIO defaultLogsDir
     liftIO $ createDirectoryIfMissing True logsDir
-    go logsDir
-    -- TODO find out if there's a way to have a return type of Consumer' String m ()
-    return Nothing
+    now <- liftIO getCurrentTime
+    result <- liftIO $ try $ logStr logsDir s now
+    case result of
+        Left e -> liftIO $ logStr logsDir ("Error: " <> show (e :: IOError)) now
+        _ -> return ()
   where
-    go logsDir = do
-        now <- liftIO getCurrentTime
-        str <- await
-        x <- liftIO $ try $ logStr logsDir str now
-        case x of
-            Left G.IOError{G.ioe_type = G.ResourceVanished, G.ioe_errno = Just ioe}
-                | Errno ioe == ePIPE -> return ()
-            Left e -> do
-                liftIO $ logStr logsDir ("Error: " <> show e) now
-                go logsDir
-            Right () -> go logsDir
     logStr logsDir str now = do
         hPutStrLn stderr str
         appendFile
@@ -135,7 +124,7 @@ printAndLog = do
             )
 
 runSbu :: Sbu -> Config -> IO (Maybe Config)
-runSbu sbu = runReaderT $ runEffect (sbu >-> printAndLog)
+runSbu sbu = runReaderT $ runEffect (for sbu printAndLog)
 
 handleOptions :: SbuOptions -> IO ()
 handleOptions (SbuOptions configPath command) = do
