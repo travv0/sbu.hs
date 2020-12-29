@@ -1,4 +1,5 @@
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Types (
     Config (..),
@@ -10,11 +11,11 @@ module Types (
 import Control.Monad.Reader (ReaderT)
 import Data.Serialize (Serialize)
 import GHC.Generics (Generic)
-import Pipes (Producer)
+import Pipes (Producer')
 
-type Sbu = Logger (ReaderT Config IO) (Maybe Config)
+type Sbu = ReaderT Config IO (Maybe Config)
 
-type Logger m = Producer String m
+type Logger m a = Producer' String m a
 
 data Config = Config
     { configBackupDir :: FilePath
