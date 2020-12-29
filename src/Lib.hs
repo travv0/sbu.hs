@@ -52,7 +52,7 @@ import System.FilePath (
     (<.>),
     (</>),
  )
-import System.FilePath.Glob (compile, globDir1, match)
+import System.FilePath.Glob (compile, globDir1, matchDefault, matchDotsImplicitly, matchWith)
 import System.IO (Handle, hFlush, hPutStrLn, stderr, stdout)
 import Types
 
@@ -491,7 +491,7 @@ backupGame gName = do
             isDirectory <- liftIO $ doesDirectoryExist $ gamePath game
             if isDirectory
                 then do
-                    (anyBackedUp, warnings) <-
+                    (backedUpCount, warnings) <-
                         backupFiles
                             (gameName game)
                             (gamePath game)
@@ -500,9 +500,13 @@ backupGame gName = do
                             (configBackupDir config </> gName)
                     now <- liftIO getCurrentTime
                     tz <- liftIO getCurrentTimeZone
-                    when anyBackedUp $
+                    when (backedUpCount > 0) $
                         yield $
                             "Finished backing up "
+                                <> show backedUpCount
+                                <> " file"
+                                <> (if backedUpCount == 1 then "" else "s")
+                                <> " for "
                                 <> gName
                                 <> " in "
                                 <> show (diffUTCTime now startTime)
@@ -534,15 +538,15 @@ backupFiles ::
     String ->
     FilePath ->
     FilePath ->
-    Logger m (Bool, [String])
+    Logger m (Integer, [String])
 backupFiles game basePath glob from to = do
     files <- liftIO $ getDirectoryContents from
     foldM
-        ( \(b, es) f -> do
-            (backedUp, newErrs) <- backupFile game basePath glob (from </> f) (to </> f)
-            return (b || backedUp, es <> newErrs)
+        ( \(c, es) f -> do
+            (newCount, newErrs) <- backupFile game basePath glob (from </> f) (to </> f)
+            return (c + newCount, es <> newErrs)
         )
-        (False, [])
+        (0, [])
         (filter (\f -> f /= "." && f /= "..") files)
 
 backupFile ::
@@ -552,15 +556,16 @@ backupFile ::
     String ->
     FilePath ->
     FilePath ->
-    Logger m (Bool, [String])
+    Logger m (Integer, [String])
 backupFile game basePath glob from to = do
     isDirectory <- liftIO $ doesDirectoryExist from
     if isDirectory
         then backupFiles game basePath glob from to
-        else if globMatches then backupFile' else return (False, [])
+        else if globMatches then backupFile' else return (0, [])
   where
     globMatches =
-        match
+        matchWith
+            (matchDefault{matchDotsImplicitly = True})
             ( compile $
                 addTrailingPathSeparator basePath
                     <> if null glob
@@ -591,7 +596,7 @@ backupFile game basePath glob from to = do
                                 renameFile to $
                                     to <.> "bak" <.> formatModifiedTime toModTime
                             copyAndCleanup
-                        else return (False, [])
+                        else return (0, [])
                 Nothing -> copyAndCleanup
             `catchIOError` \e -> do
                 let warning =
@@ -599,13 +604,13 @@ backupFile game basePath glob from to = do
                             <> show e
                             <> "\n"
                 yield $ "Warning: " <> warning
-                return (True, [warning])
+                return (1, [warning])
     copyAndCleanup = do
         liftIO $ createDirectoryIfMissing True $ dropFileName to
         yield $ from <> " ==>\n    " <> to
         liftIO $ copyFileWithMetadata from to
         cleanupBackups to
-        return (True, [])
+        return (1, [])
 
 cleanupBackups :: (MonadIO m, MonadReader Config m) => FilePath -> Logger m ()
 cleanupBackups backupPath = do
