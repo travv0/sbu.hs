@@ -465,13 +465,15 @@ backupGames loop verbose games = do
             hPutStrLn stderr $
                 show (length warnings) <> " warning"
                     <> (if length warnings == 1 then "" else "s")
-                    <> " occurred:\n"
+                    <> " occurred:"
             if verbose
-                then mapM_ (hPutStrLn stderr) warnings
+                then do
+                    hPutStrLn stderr ""
+                    mapM_ (hPutStrLn stderr) warnings
                 else
                     hPutStrLn
                         stderr
-                        "Pass --verbose flag to print all warnings after backup completes"
+                        "Pass --verbose flag to print all warnings after backup completes\n"
     if loop
         then do
             liftIO $ threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
@@ -506,18 +508,18 @@ backupGame gName = do
                                 <> show backedUpCount
                                 <> " file"
                                 <> (if backedUpCount == 1 then "" else "s")
-                                <> " for "
-                                <> gName
-                                <> " in "
-                                <> show (diffUTCTime now startTime)
-                                <> " on "
-                                <> formatTime defaultTimeLocale "%c" (utcToLocalTime tz now)
                                 <> ( if null warnings
                                         then ""
                                         else
                                             " with " <> show (length warnings) <> " warning"
                                                 <> (if length warnings == 1 then "" else "s")
                                    )
+                                <> " for "
+                                <> gName
+                                <> " in "
+                                <> show (diffUTCTime now startTime)
+                                <> " on "
+                                <> formatTime defaultTimeLocale "%c" (utcToLocalTime tz now)
                                 <> "\n"
                     return warnings
                 else do
