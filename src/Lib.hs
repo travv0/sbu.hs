@@ -323,71 +323,69 @@ editGame ::
 editGame gName mNewName mNewPath mNewGlob = do
     config <- ask
     mGame <- getGameByName gName
-    case (mNewName, mNewPath, mNewGlob) of
-        (Nothing, Nothing, Nothing) -> do
+    case (mGame, mNewName, mNewPath, mNewGlob) of
+        (Nothing, _, _, _) -> do
+            liftIO $
+                hPutStrLn stderr $
+                    "Error: Game with the name "
+                        <> gName
+                        <> " doesn't exist"
+            return Nothing
+        (_, Nothing, Nothing, Nothing) -> do
             liftIO $
                 hPutStrLn
                     stderr
                     "One or more of --name, --path, or --glob must be provided."
             return Nothing
-        _ -> case mGame of
-            Nothing -> do
-                liftIO $
-                    hPutStrLn stderr $
-                        "Error: Game with the name "
-                            <> gName
-                            <> " doesn't exist"
-                return Nothing
-            Just g -> do
-                let i = elemIndex (gameName g) $ map gameName (configGames config)
-                    mSplitList = splitAt <$> i <*> pure (configGames config)
-                case mSplitList of
-                    Nothing -> do
-                        warnMissingGames [gName]
-                        return Nothing
-                    Just (_, []) -> error "Couldn't find game in list"
-                    Just (front, game : back) -> do
-                        let newName = fromMaybe (gameName game) mNewName
-                            newPath = fromMaybe (gamePath game) mNewPath
-                            newGlob = case fromMaybe (gameGlob game) mNewGlob of
-                                "none" -> ""
-                                glob -> glob
-                        fullPath <- liftIO $ canonicalizePath' newPath
-                        let editedGame =
-                                game
-                                    { gameName = newName
-                                    , gamePath = fullPath
-                                    , gameGlob = newGlob
-                                    }
-                        if
-                                | isRelative fullPath -> do
-                                    liftIO $
-                                        hPutStrLn stderr $
-                                            "Error: Save path must be absolute, but relative path was supplied: "
-                                                <> fullPath
-                                    return Nothing
-                                | not $ isValidGameName newName -> do
-                                    liftIO $
-                                        hPutStrLn stderr $
-                                            "Error: Invalid characters in name `" <> newName
-                                                <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
-                                    return Nothing
-                                | otherwise -> do
-                                    liftIO $ do
-                                        printConfigRow "Name" gName $ Just newName
-                                        printConfigRow "Save path" (gamePath game) $ Just fullPath
-                                        when (not (null (gameGlob game)) || isJust mNewGlob) $
-                                            printConfigRow "Save glob" (gameGlob game) $ Just newGlob
+        (Just g, _, _, _) -> do
+            let i = elemIndex (gameName g) $ map gameName (configGames config)
+                mSplitList = splitAt <$> i <*> pure (configGames config)
+            case mSplitList of
+                Nothing -> do
+                    warnMissingGames [gName]
+                    return Nothing
+                Just (_, []) -> error "Couldn't find game in list"
+                Just (front, game : back) -> do
+                    let newName = fromMaybe (gameName game) mNewName
+                        newGlob = case fromMaybe (gameGlob game) mNewGlob of
+                            "none" -> ""
+                            glob -> glob
+                    newPath <- liftIO $ canonicalizePath' $ fromMaybe (gamePath game) mNewPath
+                    let editedGame =
+                            game
+                                { gameName = newName
+                                , gamePath = newPath
+                                , gameGlob = newGlob
+                                }
+                    if
+                            | isRelative newPath -> do
+                                liftIO $
+                                    hPutStrLn stderr $
+                                        "Error: Save path must be absolute, but relative path was supplied: "
+                                            <> newPath
+                                return Nothing
+                            | not $ isValidGameName newName -> do
+                                liftIO $
+                                    hPutStrLn stderr $
+                                        "Error: Invalid characters in name `" <> newName
+                                            <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
+                                return Nothing
+                            | otherwise -> do
+                                liftIO $ do
+                                    printConfigRow "Name" gName $ Just newName
+                                    printConfigRow "Save path" (gamePath game) $ Just newPath
+                                    when (not (null (gameGlob game)) || isJust mNewGlob) $
+                                        printConfigRow "Save glob" (gameGlob game) $ Just newGlob
 
-                                        backupDirExists <-
-                                            doesDirectoryExist $ configBackupDir config </> gName
-                                        when (isJust mNewName && backupDirExists) $ do
-                                            hPutStrLn stderr "Game name changed, renaming backup directory..."
-                                            renameDirectory
-                                                (configBackupDir config </> gName)
-                                                (configBackupDir config </> newName)
+                                    backupDirExists <-
+                                        doesDirectoryExist $ configBackupDir config </> gName
+                                    when (isJust mNewName && backupDirExists) $ do
+                                        hPutStrLn stderr "Game name changed, renaming backup directory..."
+                                        renameDirectory
+                                            (configBackupDir config </> gName)
+                                            (configBackupDir config </> newName)
 
-                                    return $ Just $ config{configGames = front <> (editedGame : back)}
+                                return $ Just $ config{configGames = front <> (editedGame : back)}
 
 hPrintConfigRow :: Handle -> String -> String -> Maybe String -> IO ()
 hPrintConfigRow handle label val newVal =
