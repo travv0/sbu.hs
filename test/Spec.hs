@@ -64,7 +64,12 @@ main = hspec $ do
                 runReaderT
                     (listOutput (addGame "new" path (Just "*")))
                     testConfig
-            result `shouldBe` ["Game added successfully:\n", "Name: new\nSave path: C:\\new\nSave glob: *\n"]
+            result
+                `shouldBe` [ "Game added successfully:\n"
+                           , "Name: new\nSave path: "
+                                <> path
+                                <> "\nSave glob: *\n"
+                           ]
 
     describe "list games" $ do
         it "lists all games in config" $ do
