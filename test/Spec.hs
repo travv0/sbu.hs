@@ -6,6 +6,7 @@ import Lib.Internal
 import Pipes (runEffect, void, (>->), (>~))
 import qualified Pipes.Prelude as P
 import System.Directory (canonicalizePath)
+import System.IO.Temp
 import Test.Hspec
 import Types
 
@@ -207,3 +208,10 @@ main = hspec $ do
                 `shouldBe` "Backup path: /backups -> " <> path
                     <> "\nBackup frequency (in minutes): 15 -> 5\n\
                        \Number of backups to keep: 20 -> 6\n"
+
+    describe "save and load config" $ do
+        it "works" $ do
+            withSystemTempFile "config" $ \path _ -> do
+                writeConfig path testConfig
+                Right config <- readConfig path
+                config `shouldBe` testConfig

@@ -1,4 +1,4 @@
-module Lib (handleOptions) where
+module Lib where
 
 import Control.Monad.IO.Class (liftIO)
 import qualified Data.ByteString as BS
