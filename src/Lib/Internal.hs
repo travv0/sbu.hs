@@ -136,22 +136,12 @@ createDefaultConfig path = do
     BS.writeFile path $ encode c
     return c
 
-backupDirLabel :: String
-backupDirLabel = "Backup path"
-backupFreqLabel :: String
-backupFreqLabel = "Backup frequency (in minutes)"
-numOfBackupsLabel :: String
-numOfBackupsLabel = "Number of backups to keep"
-
 printCreatedConfigMsg :: FilePath -> Config -> IO ()
 printCreatedConfigMsg path config = do
     hPutStrLn stderr $
         "Creating new config file at `" <> path <> "'.\n"
             <> "Use the `config' command to update default values, which are:\n"
-    printOutput $ do
-        printConfigRow backupDirLabel (configBackupDir config) Nothing
-        printConfigRow backupFreqLabel (show $ configBackupFreq config) Nothing
-        printConfigRow numOfBackupsLabel (show $ configBackupsToKeep config) Nothing
+    printOutput $ printConfig config Nothing Nothing Nothing
 
 readConfig :: FilePath -> IO (Either String Config)
 readConfig path = do
@@ -237,7 +227,7 @@ addGame game path glob = do
                                 g -> g
                             newGame = Game game path newGlob
                         yield "Game added successfully:\n"
-                        printGame newGame
+                        printGame newGame Nothing Nothing Nothing
                         return $ Just $ config{configGames = newGame : configGames config}
 
 canonicalizePath' :: FilePath -> IO FilePath
@@ -337,11 +327,7 @@ editGame gName mNewName mNewPath mNewGlob = do
                                         <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
                                 return Nothing
                             | otherwise -> do
-                                printConfigRow "Name" gName $ Just newName
-                                printConfigRow "Save path" (gamePath game) $ Just newPath
-                                when (not (null (gameGlob game)) || isJust mNewGlob) $
-                                    printConfigRow "Save glob" (gameGlob game) $ Just newGlob
-
+                                printGame game (Just newName) (Just newPath) (Just newGlob)
                                 backupDirExists <-
                                     liftIO $ doesDirectoryExist $ configBackupDir config </> gName
                                 when (isJust mNewName && backupDirExists) $ do
@@ -363,6 +349,25 @@ printConfigRow label val newVal =
                     | otherwise -> " -> " <> nv
                 Nothing -> ""
 
+printConfig ::
+    Functor m =>
+    Config ->
+    Maybe String ->
+    Maybe Integer ->
+    Maybe Integer ->
+    Logger m ()
+printConfig config mNewBackupDir mNewBackupFreq mNewBackupsToKeep = do
+    printConfigRow "Backup path" (configBackupDir config) mNewBackupDir
+    printConfigRow
+        "Backup frequency (in minutes)"
+        (show $ configBackupFreq config)
+        (show <$> mNewBackupFreq)
+    printConfigRow
+        "Number of backups to keep"
+        (show $ configBackupsToKeep config)
+        (show <$> mNewBackupsToKeep)
+    yield ""
+
 editConfig ::
     MonadReader Config m =>
     FilePath ->
@@ -381,15 +386,7 @@ editConfig newBackupDir mBackupFreq mBackupsToKeep = do
                     <> newBackupDir
             return Nothing
         else do
-            printConfigRow backupDirLabel (configBackupDir config) $ Just newBackupDir
-            printConfigRow
-                backupFreqLabel
-                (show $ configBackupFreq config)
-                (Just $ show newBackupFreq)
-            printConfigRow
-                numOfBackupsLabel
-                (show $ configBackupsToKeep config)
-                (Just $ show newBackupsToKeep)
+            printConfig config (Just newBackupDir) mBackupFreq mBackupsToKeep
             return $
                 Just $
                     config
@@ -610,16 +607,21 @@ infoGame gName = do
     let matchingGames = filter (\g -> gameName g == gName) $ configGames config
     case matchingGames of
         [] -> warnMissingGames [gName]
-        game : _ -> printGame game
+        game : _ -> printGame game Nothing Nothing Nothing
 
-printGame :: Functor m => Game -> Logger m ()
-printGame game =
-    yield $
-        ("Name: " <> gameName game <> "\n")
-            <> ("Save path: " <> gamePath game <> "\n")
-            <> if null (gameGlob game)
-                then ""
-                else "Save glob: " <> gameGlob game <> "\n"
+printGame ::
+    Functor m =>
+    Game ->
+    Maybe String ->
+    Maybe FilePath ->
+    Maybe String ->
+    Logger m ()
+printGame game mNewName mNewPath mNewGlob = do
+    printConfigRow "Name" (gameName game) mNewName
+    printConfigRow "Save path" (gamePath game) mNewPath
+    when (not (null (gameGlob game)) || isJust mNewGlob) $
+        printConfigRow "Save glob" (gameGlob game) mNewGlob
+    yield ""
 
 gameNames :: MonadReader Config m => m [String]
 gameNames = asks $ sort . map gameName . configGames
