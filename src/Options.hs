@@ -15,9 +15,8 @@ module Options (
 import Data.String (IsString)
 import Data.Version (showVersion)
 import Development.GitRev (gitHash)
+import Options.Applicative hiding (helper, infoParser)
 import Paths_sbu (version)
-
-import Options.Applicative hiding (infoParser)
 
 data SbuOptions = SbuOptions
     { sbuConfigPath :: Maybe FilePath
@@ -84,21 +83,27 @@ backupParser =
                 <$> many
                     ( argument
                         str
-                        ( metavar "GAMES..."
-                            <> help
+                        ( mconcat
+                            [ metavar "GAMES..."
+                            , help
                                 "List of games to back up.  If not provided, will back up all games"
+                            ]
                         )
                     )
                 <*> switch
-                    ( long "loop"
-                        <> short 'l'
-                        <> help
+                    ( mconcat
+                        [ long "loop"
+                        , short 'l'
+                        , help
                             "Keep running, backing up games at the interval specified in your config file"
+                        ]
                     )
                 <*> switch
-                    ( long "verbose"
-                        <> short 'v'
-                        <> help "Print verbose output"
+                    ( mconcat
+                        [ long "verbose"
+                        , short 'v'
+                        , help "Print verbose output"
+                        ]
                     )
             )
 
@@ -108,22 +113,26 @@ addParser =
         <$> ( AddOptions
                 <$> argument str (metavar "GAME")
                 <*> strOption
-                    ( long "path"
-                        <> short 'p'
-                        <> metavar "SAVE_PATH"
-                        <> help "Path to added game's save files"
+                    ( mconcat
+                        [ long "path"
+                        , short 'p'
+                        , metavar "SAVE_PATH"
+                        , help "Path to added game's save files"
+                        ]
                     )
                 <*> option
                     maybeStr
-                    ( long "glob"
-                        <> short 'g'
-                        <> metavar "SAVE_FILE_GLOB"
-                        <> value Nothing
-                        <> help
+                    ( mconcat
+                        [ long "glob"
+                        , short 'g'
+                        , metavar "SAVE_FILE_GLOB"
+                        , value Nothing
+                        , help
                             "Save file glob for added game's save files. \
                             \Only files matching this pattern will be backed up. \
                             \The default is **/* which will recursively back up \
                             \all saves in SAVE_PATH"
+                        ]
                     )
             )
 
@@ -133,10 +142,12 @@ infoParser =
         <$> many
             ( argument
                 str
-                ( metavar "GAMES..."
-                    <> help
+                ( mconcat
+                    [ metavar "GAMES..."
+                    , help
                         "List of games to display info for.  If not provided, will display \
                         \info for all games"
+                    ]
                 )
             )
 
@@ -147,12 +158,19 @@ removeParser =
                 <$> some
                     ( argument
                         str
-                        (metavar "GAMES..." <> help "List of games to remove")
+                        ( mconcat
+                            [ metavar "GAMES..."
+                            , help "List of games to remove"
+                            ]
+                        )
                     )
                 <*> switch
-                    ( long "yes" <> short 'y'
-                        <> help
+                    ( mconcat
+                        [ long "yes"
+                        , short 'y'
+                        , help
                             "Remove all without confirmation prompts"
+                        ]
                     )
             )
 
@@ -163,29 +181,35 @@ editParser =
                 <$> argument str (metavar "GAME")
                 <*> option
                     maybeStr
-                    ( long "name"
-                        <> short 'n'
-                        <> metavar "NEW_NAME"
-                        <> value Nothing
-                        <> help
+                    ( mconcat
+                        [ long "name"
+                        , short 'n'
+                        , metavar "NEW_NAME"
+                        , value Nothing
+                        , help
                             "Set game name to NEW_NAME. This will also update the directory \
                             \name in your backup directory"
+                        ]
                     )
                 <*> option
                     maybeStr
-                    ( long "path"
-                        <> short 'p'
-                        <> metavar "NEW_SAVE_PATH"
-                        <> value Nothing
-                        <> help "Set game's save path to NEW_SAVE_PATH"
+                    ( mconcat
+                        [ long "path"
+                        , short 'p'
+                        , metavar "NEW_SAVE_PATH"
+                        , value Nothing
+                        , help "Set game's save path to NEW_SAVE_PATH"
+                        ]
                     )
                 <*> option
                     maybeStr
-                    ( long "glob"
-                        <> short 'g'
-                        <> metavar "NEW_SAVE_FILE_GLOB"
-                        <> value Nothing
-                        <> help "Set game's save file glob to NEW_SAVE_FILE_GLOB. Setting this to an empty string or \"none\" implies the glob **/* which will recursively back up all files"
+                    ( mconcat
+                        [ long "glob"
+                        , short 'g'
+                        , metavar "NEW_SAVE_FILE_GLOB"
+                        , value Nothing
+                        , help "Set game's save file glob to NEW_SAVE_FILE_GLOB. Setting this to an empty string or \"none\" implies the glob **/* which will recursively back up all files"
+                        ]
                     )
             )
 
@@ -195,33 +219,40 @@ configParser =
         <$> ( ConfigOptions
                 <$> option
                     maybeStr
-                    ( long "path"
-                        <> short 'p'
-                        <> metavar "BACKUP_PATH"
-                        <> value Nothing
-                        <> help "Set path to directory in which to back up saves"
+                    ( mconcat
+                        [ long "path"
+                        , short 'p'
+                        , metavar "BACKUP_PATH"
+                        , value Nothing
+                        , help "Set path to directory in which to back up saves"
+                        ]
                     )
                 <*> option
                     maybeAuto
-                    ( long "frequency"
-                        <> short 'f'
-                        <> metavar "BACKUP_FREQUENCY"
-                        <> value Nothing
-                        <> help "Set frequency in minutes to backup saves when looping"
+                    ( mconcat
+                        [ long "frequency"
+                        , short 'f'
+                        , metavar "BACKUP_FREQUENCY"
+                        , value Nothing
+                        , help "Set frequency in minutes to backup saves when looping"
+                        ]
                     )
                 <*> option
                     maybeAuto
-                    ( long "keep"
-                        <> short 'k'
-                        <> metavar "BACKUPS_TO_KEEP"
-                        <> value Nothing
-                        <> help "Set how many copies of each backed-up file to keep"
+                    ( mconcat
+                        [ long "keep"
+                        , short 'k'
+                        , metavar "BACKUPS_TO_KEEP"
+                        , value Nothing
+                        , help "Set how many copies of each backed-up file to keep"
+                        ]
                     )
                 <|> flag'
                     ConfigDefaults
-                    ( long "use-defaults"
-                        <> help
-                            "Reset config to use default values"
+                    ( mconcat
+                        [ long "use-defaults"
+                        , help "Reset config to use default values"
+                        ]
                     )
             )
 
@@ -230,53 +261,60 @@ opts =
     SbuOptions
         <$> option
             maybeStr
-            ( long "config"
-                <> short 'c'
-                <> metavar "CONFIG_FILE"
-                <> value Nothing
-                <> help "Path to configuration file"
+            ( mconcat
+                [ long "config"
+                , short 'c'
+                , metavar "CONFIG_FILE"
+                , value Nothing
+                , help "Path to configuration file"
+                ]
             )
         <*> ( infoOption
                 (concat ["sbu v", showVersion version, " (rev: ", take 7 $(gitHash), ")"])
-                (long "version" <> help "Print version information")
+                ( mconcat
+                    [ long "version"
+                    , help "Print version information"
+                    ]
+                )
+                <*> helper
                 <*> commands
             )
 
 commands :: Parser Command
 commands =
-    hsubparser
-        ( command
-            "backup"
-            (info backupParser (fullDesc <> progDesc "Backup your game saves"))
-            <> command
+    hsubparser $
+        mconcat
+            [ command
+                "backup"
+                (info backupParser (fullDesc <> progDesc "Backup your game saves"))
+            , command
                 "add"
                 (info addParser (fullDesc <> progDesc "Add games to backup"))
-            <> command
+            , command
                 "list"
                 ( info
                     (pure ListCmd)
                     (fullDesc <> progDesc "List games that can be backed up")
                 )
-            <> command
+            , command
                 "info"
                 (info infoParser (fullDesc <> progDesc "List info for games"))
-            <> command
+            , command
                 "remove"
                 ( info
                     removeParser
                     (fullDesc <> progDesc "Remove games from backup")
                 )
-            <> command
+            , command
                 "edit"
                 (info editParser (fullDesc <> progDesc "Edit game info"))
-            <> command
+            , command
                 "config"
                 ( info
                     configParser
                     (fullDesc <> progDesc "Manage sbu configuration")
                 )
-        )
-        <**> helper
+            ]
 
 maybeStr :: IsString a => ReadM (Maybe a)
 maybeStr = Just <$> str
@@ -285,3 +323,12 @@ maybeAuto :: Read a => ReadM (Maybe a)
 maybeAuto = eitherReader $ \arg -> case reads arg of
     [(r, "")] -> return $ Just r
     _ -> Left $ "cannot parse value `" ++ arg ++ "'"
+
+helper :: Parser (a -> a)
+helper =
+    abortOption ShowHelpText $
+        mconcat
+            [ long "help"
+            , short 'h'
+            , help "Show this help text"
+            ]
