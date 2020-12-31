@@ -237,7 +237,7 @@ opts =
                 <> help "Path to configuration file"
             )
         <*> ( infoOption
-                (concat ["sbu v", showVersion version, " ", $(gitHash)])
+                (concat ["sbu v", showVersion version, " (rev: ", take 7 $(gitHash), ")"])
                 (long "version" <> help "Print version information")
                 <*> commands
             )
