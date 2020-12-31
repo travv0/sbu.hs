@@ -35,9 +35,9 @@ import System.Directory (
     doesDirectoryExist,
     doesFileExist,
     getAppUserDataDirectory,
-    getDirectoryContents,
     getHomeDirectory,
     getModificationTime,
+    listDirectory,
     removeFile,
     renameDirectory,
     renameFile,
@@ -494,14 +494,14 @@ backupFiles ::
     FilePath ->
     Logger m (Integer, [String])
 backupFiles game basePath glob from to = do
-    files <- liftIO $ getDirectoryContents from
+    files <- liftIO $ listDirectory from
     foldM
         ( \(c, es) f -> do
             (newCount, newErrs) <- backupFile game basePath glob (from </> f) (to </> f)
             return (c + newCount, es <> newErrs)
         )
         (0, [])
-        (filter (\f -> f /= "." && f /= "..") files)
+        files
 
 backupFile ::
     (MonadIO m, MonadReader Config m, MonadCatch m) =>
