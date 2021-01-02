@@ -1,4 +1,7 @@
 # sbu
+
+![Haskell CI](https://github.com/travv0/sbu/workflows/Haskell%20CI/badge.svg)
+
 Backup your saves when Steam won't do it for you.
 
 This is a tool for easily backing up game saves to cloud storage or a network drive when the game doesn't support cloud saves.
