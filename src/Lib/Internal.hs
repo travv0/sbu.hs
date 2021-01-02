@@ -88,7 +88,9 @@ createLockFile = do
                     <> lockPath
                     <> "' and try again"
             liftIO exitFailure
-        else BS.writeFile lockPath BS.empty
+        else do
+            createDirectoryIfMissing True $ dropFileName lockPath
+            BS.writeFile lockPath BS.empty
 
 deleteLockFile :: IO ()
 deleteLockFile = do
