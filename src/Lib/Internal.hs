@@ -431,7 +431,7 @@ backupGames loop verbose games = do
     if loop
         then do
             liftIO $ threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
-            backupGames verbose loop games
+            backupGames loop verbose games
         else return Nothing
 
 backupGame ::
