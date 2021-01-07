@@ -9,6 +9,7 @@ import Options
 import System.Directory (doesFileExist)
 import System.FilePath ((<.>))
 import System.IO (hPutStrLn, stderr)
+import Types
 
 handleOptions :: SbuOptions -> IO ()
 handleOptions (SbuOptions configPath command) = do
@@ -29,5 +30,5 @@ handleOptions (SbuOptions configPath command) = do
                         Right c -> return c
                         Left _ -> createDefaultConfig path
                 else createDefaultConfig path
-    newConfig <- runSbu (handleCommand command) config
+    newConfig <- runSbu (handleCommand command) $ RunConfig config False
     liftIO $ maybeWriteConfig path newConfig

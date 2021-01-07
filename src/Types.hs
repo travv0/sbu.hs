@@ -3,6 +3,7 @@
 
 module Types (
     Config (..),
+    RunConfig (..),
     Game (..),
     Sbu,
     Logger,
@@ -13,9 +14,14 @@ import Data.Serialize (Serialize)
 import GHC.Generics (Generic)
 import Pipes (Producer')
 
-type Sbu = ReaderT Config IO (Maybe Config)
+type Sbu = ReaderT RunConfig IO (Maybe Config)
 
 type Logger m a = Producer' String m a
+
+data RunConfig = RunConfig
+    { runConfigConfig :: Config
+    , runConfigVerbose :: Bool
+    }
 
 data Config = Config
     { configBackupDir :: FilePath

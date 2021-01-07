@@ -30,6 +30,9 @@ testConfig =
             ]
         }
 
+testRunConfig :: RunConfig
+testRunConfig = RunConfig testConfig False
+
 discardOutput :: Monad m => Logger m a -> m a
 discardOutput p = runEffect $ p >-> P.drain
 
@@ -44,7 +47,7 @@ main = hspec $ do
             result <-
                 runReaderT
                     (discardOutput (addGame "new" path (Just "*")))
-                    testConfig
+                    testRunConfig
             result
                 `shouldBe` Just
                     ( testConfig
@@ -63,7 +66,7 @@ main = hspec $ do
             result <-
                 runReaderT
                     (listOutput (addGame "new" path (Just "*")))
-                    testConfig
+                    testRunConfig
             intercalate "\n" result
                 `shouldBe` "Game added successfully:\n\n\
                            \Name: new\nSave path: "
@@ -72,12 +75,12 @@ main = hspec $ do
 
     describe "list games" $ do
         it "lists all games in config" $ do
-            result <- runReaderT (listOutput listGames) testConfig
+            result <- runReaderT (listOutput listGames) testRunConfig
             intercalate "\n" result `shouldBe` "another\ntest"
 
     describe "print game info" $ do
         it "lists info for all games in config" $ do
-            result <- runReaderT (listOutput (infoGames [])) testConfig
+            result <- runReaderT (listOutput (infoGames [])) testRunConfig
             intercalate "\n" result
                 `shouldBe` "Name: another\n\
                            \Save path: /another/path\n\
@@ -89,7 +92,7 @@ main = hspec $ do
             result <-
                 runReaderT
                     (listOutput (infoGames ["another"]))
-                    testConfig
+                    testRunConfig
             intercalate "\n" result
                 `shouldBe` "Name: another\nSave path: /another/path\nSave glob: save*\n"
 
@@ -106,7 +109,7 @@ main = hspec $ do
                             (Just "none")
                         )
                     )
-                    testConfig
+                    testRunConfig
             length result `shouldBe` length (configGames testConfig)
             head (filter ((== "test") . gameName) result)
                 `shouldBe` Game
@@ -127,7 +130,7 @@ main = hspec $ do
                             (Just "none")
                         )
                     )
-                    testConfig
+                    testRunConfig
             intercalate "\n" result
                 `shouldBe` "Name: another\nSave path: /another/path -> " <> path
                     <> "\nSave glob: save* -> \n"
@@ -143,7 +146,7 @@ main = hspec $ do
                             Nothing
                         )
                     )
-                    testConfig
+                    testRunConfig
             length result `shouldBe` length (configGames testConfig)
             length (filter ((== "new") . gameName) result)
                 `shouldBe` 1
@@ -159,7 +162,7 @@ main = hspec $ do
                             Nothing
                         )
                     )
-                    testConfig
+                    testRunConfig
             head result `shouldBe` "Name: test -> new"
 
     describe "remove game" $ do
@@ -167,7 +170,7 @@ main = hspec $ do
             Just Config{configGames = result} <-
                 runReaderT
                     (discardOutput (return "" >~ removeGames True ["test"]))
-                    testConfig
+                    testRunConfig
             length result `shouldBe` length (configGames testConfig) - 1
             length (filter ((== "test") . gameName) result) `shouldBe` 0
 
@@ -175,7 +178,7 @@ main = hspec $ do
             result <-
                 runReaderT
                     (listOutput (return "y" >~ removeGames False ["another", "test"]))
-                    testConfig
+                    testRunConfig
             sort result
                 `shouldBe` [ "Permanently delete another? (y/N) "
                            , "Permanently delete test? (y/N) "
@@ -189,7 +192,7 @@ main = hspec $ do
             Just result <-
                 runReaderT
                     (discardOutput (editConfig path (Just 5) (Just 6)))
-                    testConfig
+                    testRunConfig
             result
                 `shouldBe` Config
                     { configBackupDir = path
@@ -203,7 +206,7 @@ main = hspec $ do
             result <-
                 runReaderT
                     (listOutput (editConfig path (Just 5) (Just 6)))
-                    testConfig
+                    testRunConfig
             intercalate "\n" result
                 `shouldBe` "Backup path: /backups -> " <> path
                     <> "\nBackup frequency (in minutes): 15 -> 5\n\

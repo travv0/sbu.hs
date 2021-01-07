@@ -9,7 +9,7 @@ import Control.Monad (filterM, foldM, forM_, unless, when)
 import Control.Monad.Catch (MonadCatch, MonadMask, catchIOError, finally, try)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.ListM (sortByM)
-import Control.Monad.Reader (MonadReader (ask), ReaderT (runReaderT), asks)
+import Control.Monad.Reader (MonadReader (ask, local), ReaderT (runReaderT), asks)
 import qualified Data.ByteString as BS
 import Data.Char (toLower)
 import Data.List (elemIndex, intercalate, sort)
@@ -127,7 +127,7 @@ printAndLog s = do
                     lines str
             )
 
-runSbu :: Sbu -> Config -> IO (Maybe Config)
+runSbu :: Sbu -> RunConfig -> IO (Maybe Config)
 runSbu = runReaderT
 
 createDefaultConfig :: FilePath -> IO Config
@@ -180,7 +180,7 @@ handleCommand (RemoveCmd (RemoveOptions games yes)) =
 handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) =
     printOutput $ editGame game mNewName mNewPath mNewGlob
 handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) = do
-    config <- ask
+    config <- asks runConfigConfig
     newBackupDir <- liftIO $ canonicalizePath' $ fromMaybe (configBackupDir config) mBackupDir
     printOutput $ editConfig newBackupDir mBackupFreq mBackupsToKeep
 handleCommand (ConfigCmd ConfigDefaults) = do
@@ -191,7 +191,8 @@ handleCommand (ConfigCmd ConfigDefaults) = do
             (Just $ configBackupFreq dc)
             (Just $ configBackupsToKeep dc)
 handleCommand (BackupCmd (BackupOptions games loop verbose)) =
-    printAndLogOutput $ backupGames loop verbose games
+    local (\c -> c{runConfigVerbose = verbose}) $
+        printAndLogOutput $ backupGames loop games
 
 validGameNameChars :: [Char]
 validGameNameChars = ['A' .. 'z'] <> ['0' .. '9'] <> ['-', '_']
@@ -200,13 +201,13 @@ isValidGameName :: String -> Bool
 isValidGameName = all (`elem` validGameNameChars)
 
 addGame ::
-    MonadReader Config m =>
+    MonadReader RunConfig m =>
     String ->
     FilePath ->
     Maybe String ->
     Logger m (Maybe Config)
 addGame game path glob = do
-    config <- ask
+    config <- asks runConfigConfig
     if
             | game `elem` map gameName (configGames config) -> do
                 yield $ "Error: Game with the name " <> game <> " already exists"
@@ -239,15 +240,15 @@ canonicalizePath' ('~' : path) = do
     canonicalizePath $ homeDir </> trimmedPath
 canonicalizePath' path = canonicalizePath path
 
-listGames :: MonadReader Config m => Logger m (Maybe Config)
+listGames :: MonadReader RunConfig m => Logger m (Maybe Config)
 listGames = do
     gNames <- gameNames
     yield $ intercalate "\n" gNames
     return Nothing
 
-removeGames :: MonadReader Config m => Bool -> [String] -> Pipe String String m (Maybe Config)
+removeGames :: MonadReader RunConfig m => Bool -> [String] -> Pipe String String m (Maybe Config)
 removeGames yes games = do
-    config <- ask
+    config <- asks runConfigConfig
     if yes
         then do
             yield $ "Removed the following games:\n" <> intercalate "\n" games
@@ -271,21 +272,21 @@ removeGames yes games = do
                         { configGames = filter ((`notElem` map gameName gamesToRemove) . gameName) $ configGames config
                         }
 
-infoGames :: MonadReader Config m => [String] -> Logger m (Maybe Config)
+infoGames :: MonadReader RunConfig m => [String] -> Logger m (Maybe Config)
 infoGames games = do
     allGameNames <- gameNames
     mapM_ infoGame $ if null games then allGameNames else games
     return Nothing
 
 editGame ::
-    (MonadIO m, MonadReader Config m) =>
+    (MonadIO m, MonadReader RunConfig m) =>
     String ->
     Maybe String ->
     Maybe FilePath ->
     Maybe String ->
     Logger m (Maybe Config)
 editGame gName mNewName mNewPath mNewGlob = do
-    config <- ask
+    config <- asks runConfigConfig
     mGame <- getGameByName gName
     case (mGame, mNewName, mNewPath, mNewGlob) of
         (Nothing, _, _, _) -> do
@@ -371,13 +372,13 @@ printConfig config mNewBackupDir mNewBackupFreq mNewBackupsToKeep = do
     yield ""
 
 editConfig ::
-    MonadReader Config m =>
+    MonadReader RunConfig m =>
     FilePath ->
     Maybe Integer ->
     Maybe Integer ->
     Logger m (Maybe Config)
 editConfig newBackupDir mBackupFreq mBackupsToKeep = do
-    config <- ask
+    config <- asks runConfigConfig
     let newBackupFreq = fromMaybe (configBackupFreq config) mBackupFreq
         newBackupsToKeep = fromMaybe (configBackupsToKeep config) mBackupsToKeep
 
@@ -398,13 +399,12 @@ editConfig newBackupDir mBackupFreq mBackupsToKeep = do
                         }
 
 backupGames ::
-    (MonadIO m, MonadReader Config m, MonadCatch m) =>
-    Bool ->
+    (MonadIO m, MonadReader RunConfig m, MonadCatch m) =>
     Bool ->
     [String] ->
     Logger m (Maybe Config)
-backupGames loop verbose games = do
-    config <- ask
+backupGames loop games = do
+    RunConfig config verbose <- ask
     allGameNames <- gameNames
     let gamesToBackup = if null games then allGameNames else games
     warnings <-
@@ -431,15 +431,15 @@ backupGames loop verbose games = do
     if loop
         then do
             liftIO $ threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
-            backupGames loop verbose games
+            backupGames loop games
         else return Nothing
 
 backupGame ::
-    (MonadIO m, MonadReader Config m, MonadCatch m) =>
+    (MonadIO m, MonadReader RunConfig m, MonadCatch m) =>
     String ->
     Logger m [String]
 backupGame gName = do
-    config <- ask
+    config <- asks runConfigConfig
     startTime <- liftIO getCurrentTime
     mGame <- getGameByName gName
     case mGame of
@@ -488,7 +488,7 @@ backupGame gName = do
             return []
 
 backupFiles ::
-    (MonadIO m, MonadReader Config m, MonadCatch m) =>
+    (MonadIO m, MonadReader RunConfig m, MonadCatch m) =>
     String ->
     FilePath ->
     String ->
@@ -506,7 +506,7 @@ backupFiles game basePath glob from to = do
         files
 
 backupFile ::
-    (MonadIO m, MonadReader Config m, MonadCatch m) =>
+    (MonadIO m, MonadReader RunConfig m, MonadCatch m) =>
     String ->
     FilePath ->
     String ->
@@ -568,9 +568,9 @@ backupFile game basePath glob from to = do
         cleanupBackups to
         return (1, [])
 
-cleanupBackups :: (MonadIO m, MonadReader Config m) => FilePath -> Logger m ()
+cleanupBackups :: (MonadIO m, MonadReader RunConfig m) => FilePath -> Logger m ()
 cleanupBackups backupPath = do
-    config <- ask
+    RunConfig config verbose <- ask
     when (configBackupsToKeep config > 0) $ do
         files <-
             liftIO $
@@ -595,7 +595,7 @@ cleanupBackups backupPath = do
                     drop (fromIntegral $ configBackupsToKeep config) sortedFiles
             mapM_
                 ( \f -> do
-                    yield $ "Deleting " <> f
+                    when verbose $ yield $ "Deleting " <> f
                     liftIO $ removeFile f
                 )
                 filesToDelete
@@ -603,10 +603,12 @@ cleanupBackups backupPath = do
 formatModifiedTime :: UTCTime -> String
 formatModifiedTime = formatTime defaultTimeLocale "%Y_%m_%d_%H_%M_%S"
 
-infoGame :: MonadReader Config m => String -> Logger m ()
+infoGame :: MonadReader RunConfig m => String -> Logger m ()
 infoGame gName = do
     config <- ask
-    let matchingGames = filter (\g -> gameName g == gName) $ configGames config
+    let matchingGames =
+            filter (\g -> gameName g == gName) $
+                configGames $ runConfigConfig config
     case matchingGames of
         [] -> warnMissingGames [gName]
         game : _ -> printGame game Nothing Nothing Nothing
@@ -625,8 +627,8 @@ printGame game mNewName mNewPath mNewGlob = do
         printConfigRow "Save glob" (gameGlob game) mNewGlob
     yield ""
 
-gameNames :: MonadReader Config m => m [String]
-gameNames = asks $ sort . map gameName . configGames
+gameNames :: MonadReader RunConfig m => m [String]
+gameNames = asks $ sort . map gameName . configGames . runConfigConfig
 
 promptRemove :: Functor m => Game -> Pipe String String m Bool
 promptRemove game = do
@@ -634,9 +636,9 @@ promptRemove game = do
     input <- await
     return $ toLower (head $ if null input then "n" else input) == 'y'
 
-warnMissingGames :: (MonadReader Config m, Foldable t) => t String -> Logger m ()
+warnMissingGames :: (MonadReader RunConfig m, Foldable t) => t String -> Logger m ()
 warnMissingGames games = do
-    config <- ask
+    config <- asks runConfigConfig
     mapM_
         ( \g ->
             when (g `notElem` map gameName (configGames config)) $
@@ -647,9 +649,9 @@ warnMissingGames games = do
         )
         games
 
-getGameByName :: MonadReader Config m => String -> m (Maybe Game)
+getGameByName :: MonadReader RunConfig m => String -> m (Maybe Game)
 getGameByName name = do
-    config <- ask
+    config <- asks runConfigConfig
     case filter (\g -> gameName g == name) $ configGames config of
         [] -> return Nothing
         (game : _) -> return $ Just game
