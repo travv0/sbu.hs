@@ -31,7 +31,11 @@ testConfig =
         }
 
 testRunConfig :: RunConfig
-testRunConfig = RunConfig testConfig False
+testRunConfig =
+    RunConfig
+        { runConfigConfig = testConfig
+        , runConfigVerbose = False
+        }
 
 discardOutput :: Monad m => Logger m a -> m a
 discardOutput p = runEffect $ p >-> P.drain

@@ -404,7 +404,7 @@ backupGames ::
     [String] ->
     Logger m (Maybe Config)
 backupGames loop games = do
-    RunConfig config verbose <- ask
+    RunConfig{runConfigConfig = config, runConfigVerbose = verbose} <- ask
     allGameNames <- gameNames
     let gamesToBackup = if null games then allGameNames else games
     warnings <-
@@ -570,7 +570,7 @@ backupFile game basePath glob from to = do
 
 cleanupBackups :: (MonadIO m, MonadReader RunConfig m) => FilePath -> Logger m ()
 cleanupBackups backupPath = do
-    RunConfig config verbose <- ask
+    RunConfig{runConfigConfig = config, runConfigVerbose = verbose} <- ask
     when (configBackupsToKeep config > 0) $ do
         files <-
             liftIO $

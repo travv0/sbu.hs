@@ -30,5 +30,10 @@ handleOptions (SbuOptions configPath command) = do
                         Right c -> return c
                         Left _ -> createDefaultConfig path
                 else createDefaultConfig path
-    newConfig <- runSbu (handleCommand command) $ RunConfig config False
+    newConfig <-
+        runSbu (handleCommand command) $
+            RunConfig
+                { runConfigConfig = config
+                , runConfigVerbose = False
+                }
     liftIO $ maybeWriteConfig path newConfig
