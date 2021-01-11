@@ -7,6 +7,7 @@ module Types (
     Game (..),
     Sbu,
     Logger,
+    Output (..),
 ) where
 
 import Control.Monad.Reader (ReaderT)
@@ -16,7 +17,10 @@ import Pipes (Producer')
 
 type Sbu = ReaderT RunConfig IO (Maybe Config)
 
-type Logger m a = Producer' String m a
+data Output = Normal String | Warning String | Error String
+    deriving (Show, Eq)
+
+type Logger m a = Producer' Output m a
 
 data RunConfig = RunConfig
     { runConfigConfig :: Config

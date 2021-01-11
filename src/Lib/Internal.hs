@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 
 module Lib.Internal where
@@ -15,6 +16,7 @@ import Data.Char (toLower)
 import Data.List (elemIndex, intercalate, sort)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Serialize (decode, encode)
+import qualified Data.Text as T
 import Data.Time (
     UTCTime (utctDay, utctDayTime),
     defaultTimeLocale,
@@ -28,6 +30,8 @@ import Data.Time (
 import Options
 import Pipes (Pipe, await, for, runEffect, yield, (>->))
 import qualified Pipes.Prelude as P
+import Rainbow (Chunk, chunk, fore, hPutChunks, red, yellow)
+import Rainbow.Types (_yarn)
 import System.Directory (
     canonicalizePath,
     copyFileWithMetadata,
@@ -53,7 +57,7 @@ import System.FilePath (
     (</>),
  )
 import System.FilePath.Glob (compile, globDir1, matchDefault, matchDotsImplicitly, matchWith)
-import System.IO (hPutStrLn, stderr)
+import System.IO (Handle, hPutStrLn, stderr)
 import Types
 
 defaultGlob :: String
@@ -108,23 +112,30 @@ defaultConfig = do
     home <- getHomeDirectory
     return $ Config (home </> "sbu_backups") 15 20 []
 
-printAndLog :: MonadIO m => String -> m ()
+printAndLog :: MonadIO m => Chunk -> m ()
 printAndLog s = do
     logsDir <- liftIO defaultLogsDir
     liftIO $ createDirectoryIfMissing True logsDir
     now <- liftIO getCurrentTime
     result <- liftIO $ try $ logStr logsDir s now
     case result of
-        Left e -> liftIO $ logStr logsDir ("Error: " <> show (e :: IOError)) now
+        Left e ->
+            liftIO $
+                logStr
+                    logsDir
+                    ( fore red $
+                        chunk $ T.pack $ "Error: " <> show (e :: IOError)
+                    )
+                    now
         _ -> return ()
   where
     logStr logsDir str now = do
-        hPutStrLn stderr str
+        hPutChunkLn stderr str
         appendFile
             (logsDir </> show (utctDay now) <.> "log")
             ( unlines $
-                map ((formatTime defaultTimeLocale "%X" now <> ": ") <>) $
-                    lines str
+                map (((formatTime defaultTimeLocale "%X" now <> ": ") <>) . T.unpack) $
+                    T.lines $ _yarn str
             )
 
 runSbu :: Sbu -> RunConfig -> IO (Maybe Config)
@@ -164,10 +175,23 @@ maybeWriteConfig :: FilePath -> Maybe Config -> IO ()
 maybeWriteConfig path config = forM_ config (writeConfig path)
 
 printOutput :: MonadIO m => Logger m r -> m r
-printOutput p = runEffect $ for p (liftIO . hPutStrLn stderr)
+printOutput p =
+    runEffect $
+        for p $
+            liftIO
+                . hPutChunkLn stderr
+                . outputToChunk
+
+hPutChunkLn :: Handle -> Chunk -> IO ()
+hPutChunkLn handle chnk = hPutChunks handle [chnk] >> hPutChunks handle ["\n"]
+
+outputToChunk :: Output -> Chunk
+outputToChunk (Normal s) = chunk $ T.pack s
+outputToChunk (Warning s) = fore yellow $ chunk $ "Warning: " <> T.pack s
+outputToChunk (Error s) = fore red $ chunk $ "Error: " <> T.pack s
 
 printAndLogOutput :: MonadIO m => Logger m r -> m r
-printAndLogOutput p = runEffect $ for p printAndLog
+printAndLogOutput p = runEffect $ for p (printAndLog . outputToChunk)
 
 handleCommand :: Command -> Sbu
 handleCommand (AddCmd (AddOptions game savePath glob)) = do
@@ -210,26 +234,28 @@ addGame game path glob = do
     config <- asks runConfigConfig
     if
             | game `elem` map gameName (configGames config) -> do
-                yield $ "Error: Game with the name " <> game <> " already exists"
+                yield $ Error $ "Game with the name " <> game <> " already exists"
                 return Nothing
             | not $ isValidGameName game -> do
                 yield $
-                    "Error: Invalid characters in name `" <> game
-                        <> "': only alphanumeric characters, underscores, and hyphens are allowed"
+                    Error $
+                        "Invalid characters in name `" <> game
+                            <> "': only alphanumeric characters, underscores, and hyphens are allowed"
                 return Nothing
             | otherwise -> do
                 if isRelative path
                     then do
                         yield $
-                            "Error: Save path must be absolute, but relative path was supplied: "
-                                <> path
+                            Error $
+                                "Save path must be absolute, but relative path was supplied: "
+                                    <> path
                         return Nothing
                     else do
                         let newGlob = case fromMaybe "" glob of
                                 "none" -> ""
                                 g -> g
                             newGame = Game game path newGlob
-                        yield "Game added successfully:\n"
+                        yield $ Normal "Game added successfully:\n"
                         printGame newGame Nothing Nothing Nothing
                         return $ Just $ config{configGames = newGame : configGames config}
 
@@ -243,15 +269,16 @@ canonicalizePath' path = canonicalizePath path
 listGames :: MonadReader RunConfig m => Logger m (Maybe Config)
 listGames = do
     gNames <- gameNames
-    yield $ intercalate "\n" gNames
+    yield $ Normal $ intercalate "\n" gNames
     return Nothing
 
-removeGames :: MonadReader RunConfig m => Bool -> [String] -> Pipe String String m (Maybe Config)
+removeGames :: MonadReader RunConfig m => Bool -> [String] -> Pipe String Output m (Maybe Config)
 removeGames yes games = do
     config <- asks runConfigConfig
     if yes
         then do
-            yield $ "Removed the following games:\n" <> intercalate "\n" games
+            yield $
+                Normal $ "Removed the following games:\n" <> intercalate "\n" games
             return $
                 Just $
                     config
@@ -265,7 +292,7 @@ removeGames yes games = do
                 filterM promptRemove $
                     filter ((`elem` games) . gameName) $
                         configGames config
-            mapM_ (\g -> yield $ "Removed " <> gameName g) gamesToRemove
+            mapM_ (\g -> yield $ Normal $ "Removed " <> gameName g) gamesToRemove
             return $
                 Just $
                     config
@@ -291,12 +318,13 @@ editGame gName mNewName mNewPath mNewGlob = do
     case (mGame, mNewName, mNewPath, mNewGlob) of
         (Nothing, _, _, _) -> do
             yield $
-                "Error: Game with the name "
-                    <> gName
-                    <> " doesn't exist"
+                Error $
+                    "Game with the name "
+                        <> gName
+                        <> " doesn't exist"
             return Nothing
         (_, Nothing, Nothing, Nothing) -> do
-            yield "One or more of --name, --path, or --glob must be provided."
+            yield $ Error "One or more of --name, --path, or --glob must be provided."
             return Nothing
         (Just g, _, _, _) -> do
             let i = elemIndex (gameName g) $ map gameName (configGames config)
@@ -321,20 +349,22 @@ editGame gName mNewName mNewPath mNewGlob = do
                     if
                             | isRelative newPath -> do
                                 yield $
-                                    "Error: Save path must be absolute, but relative path was supplied: "
-                                        <> newPath
+                                    Error $
+                                        "Save path must be absolute, but relative path was supplied: "
+                                            <> newPath
                                 return Nothing
                             | not $ isValidGameName newName -> do
                                 yield $
-                                    "Error: Invalid characters in name `" <> newName
-                                        <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
+                                    Error $
+                                        "Invalid characters in name `" <> newName
+                                            <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
                                 return Nothing
                             | otherwise -> do
                                 printGame game (Just newName) (Just newPath) (Just newGlob)
                                 backupDirExists <-
                                     liftIO $ doesDirectoryExist $ configBackupDir config </> gName
                                 when (isJust mNewName && backupDirExists) $ do
-                                    yield "Game name changed, renaming backup directory..."
+                                    yield $ Warning "Game name changed, renaming backup directory..."
                                     liftIO $
                                         renameDirectory
                                             (configBackupDir config </> gName)
@@ -345,12 +375,13 @@ editGame gName mNewName mNewPath mNewGlob = do
 printConfigRow :: Functor m => String -> String -> Maybe String -> Logger m ()
 printConfigRow label val newVal =
     yield $
-        label <> ": " <> val
-            <> case newVal of
-                Just nv
-                    | val == nv -> ""
-                    | otherwise -> " -> " <> nv
-                Nothing -> ""
+        Normal $
+            label <> ": " <> val
+                <> case newVal of
+                    Just nv
+                        | val == nv -> ""
+                        | otherwise -> " -> " <> nv
+                    Nothing -> ""
 
 printConfig ::
     Functor m =>
@@ -369,7 +400,7 @@ printConfig config mNewBackupDir mNewBackupFreq mNewBackupsToKeep = do
         "Number of backups to keep"
         (show $ configBackupsToKeep config)
         (show <$> mNewBackupsToKeep)
-    yield ""
+    yield $ Normal ""
 
 editConfig ::
     MonadReader RunConfig m =>
@@ -385,8 +416,9 @@ editConfig newBackupDir mBackupFreq mBackupsToKeep = do
     if isRelative newBackupDir
         then do
             yield $
-                "Error: Backup path must be absolute, but relative path was supplied: "
-                    <> newBackupDir
+                Error $
+                    "Backup path must be absolute, but relative path was supplied: "
+                        <> newBackupDir
             return Nothing
         else do
             printConfig config (Just newBackupDir) mBackupFreq mBackupsToKeep
@@ -412,7 +444,7 @@ backupGames loop games = do
             ( \acc game -> do
                 warnings <-
                     backupGame game `catchIOError` \e -> do
-                        yield $ "Error backing up " <> game <> ": " <> show e
+                        yield $ Error $ "Error backing up " <> game <> ": " <> show e
                         return []
                 return $ acc <> warnings
             )
@@ -420,14 +452,15 @@ backupGames loop games = do
             gamesToBackup
     unless (null warnings) $ do
         yield $
-            show (length warnings) <> " warning"
-                <> (if length warnings == 1 then "" else "s")
-                <> " occurred:"
+            Warning $
+                show (length warnings) <> " warning"
+                    <> (if length warnings == 1 then "" else "s")
+                    <> " occurred:"
         if verbose
             then do
-                yield ""
-                mapM_ yield warnings
-            else yield "Pass --verbose flag to print all warnings after backup completes\n"
+                yield $ Normal ""
+                mapM_ (yield . Warning) warnings
+            else yield $ Normal "Pass --verbose flag to print all warnings after backup completes\n"
     if loop
         then do
             liftIO $ threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
@@ -458,30 +491,29 @@ backupGame gName = do
                     tz <- liftIO getCurrentTimeZone
                     when (backedUpCount > 0) $
                         yield $
-                            "Finished backing up "
-                                <> show backedUpCount
-                                <> " file"
-                                <> (if backedUpCount == 1 then "" else "s")
-                                <> ( if null warnings
-                                        then ""
-                                        else
-                                            " with " <> show (length warnings) <> " warning"
-                                                <> (if length warnings == 1 then "" else "s")
-                                   )
-                                <> " for "
-                                <> gName
-                                <> " in "
-                                <> show (diffUTCTime now startTime)
-                                <> " on "
-                                <> formatTime defaultTimeLocale "%c" (utcToLocalTime tz now)
-                                <> "\n"
+                            Normal $
+                                "Finished backing up "
+                                    <> show backedUpCount
+                                    <> " file"
+                                    <> (if backedUpCount == 1 then "" else "s")
+                                    <> ( if null warnings
+                                            then ""
+                                            else
+                                                " with " <> show (length warnings) <> " warning"
+                                                    <> (if length warnings == 1 then "" else "s")
+                                       )
+                                    <> " for "
+                                    <> gName
+                                    <> " in "
+                                    <> show (diffUTCTime now startTime)
+                                    <> " on "
+                                    <> formatTime defaultTimeLocale "%c" (utcToLocalTime tz now)
+                                    <> "\n"
                     return warnings
                 else do
                     yield $
-                        "Warning: Path set for "
-                            <> gName
-                            <> " doesn't exist: "
-                            <> gamePath game
+                        Warning $
+                            "Path set for " <> gName <> " doesn't exist: " <> gamePath game
                     return []
         Nothing -> do
             warnMissingGames [gName]
@@ -559,11 +591,11 @@ backupFile game basePath glob from to = do
                         "Unable to backup file " <> to <> " for game " <> game <> ":\n"
                             <> show e
                             <> "\n"
-                yield $ "Warning: " <> warning
+                yield $ Warning warning
                 return (1, [warning])
     copyAndCleanup = do
         liftIO $ createDirectoryIfMissing True $ dropFileName to
-        yield $ from <> " ==>\n    " <> to
+        yield $ Normal $ from <> " ==>\n    " <> to
         liftIO $ copyFileWithMetadata from to
         cleanupBackups to
         return (1, [])
@@ -595,7 +627,7 @@ cleanupBackups backupPath = do
                     drop (fromIntegral $ configBackupsToKeep config) sortedFiles
             mapM_
                 ( \f -> do
-                    when verbose $ yield $ "Deleting " <> f
+                    when verbose $ yield $ Warning $ "Deleting " <> f
                     liftIO $ removeFile f
                 )
                 filesToDelete
@@ -625,14 +657,14 @@ printGame game mNewName mNewPath mNewGlob = do
     printConfigRow "Save path" (gamePath game) mNewPath
     when (not (null (gameGlob game)) || isJust mNewGlob) $
         printConfigRow "Save glob" (gameGlob game) mNewGlob
-    yield ""
+    yield $ Normal ""
 
 gameNames :: MonadReader RunConfig m => m [String]
 gameNames = asks $ sort . map gameName . configGames . runConfigConfig
 
-promptRemove :: Functor m => Game -> Pipe String String m Bool
+promptRemove :: Functor m => Game -> Pipe String Output m Bool
 promptRemove game = do
-    yield $ "Permanently delete " <> gameName game <> "? (y/N) "
+    yield $ Normal $ "Permanently delete " <> gameName game <> "? (y/N) "
     input <- await
     return $ toLower (head $ if null input then "n" else input) == 'y'
 
@@ -642,10 +674,7 @@ warnMissingGames games = do
     mapM_
         ( \g ->
             when (g `notElem` map gameName (configGames config)) $
-                yield $
-                    "Warning: No game named `"
-                        <> g
-                        <> "'"
+                yield $ Warning $ "No game named `" <> g <> "'"
         )
         games
 

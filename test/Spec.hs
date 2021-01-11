@@ -1,7 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 
 import Control.Monad.Reader (runReaderT)
-import Data.List (intercalate, sort)
+import Data.List (sort)
 import Lib.Internal
 import Pipes (runEffect, void, (>->), (>~))
 import qualified Pipes.Prelude as P
@@ -40,7 +40,7 @@ testRunConfig =
 discardOutput :: Monad m => Logger m a -> m a
 discardOutput p = runEffect $ p >-> P.drain
 
-listOutput :: Monad m => Logger m a -> m [String]
+listOutput :: Monad m => Logger m a -> m [Output]
 listOutput = P.toListM . void
 
 main :: IO ()
@@ -71,34 +71,43 @@ main = hspec $ do
                 runReaderT
                     (listOutput (addGame "new" path (Just "*")))
                     testRunConfig
-            intercalate "\n" result
-                `shouldBe` "Game added successfully:\n\n\
-                           \Name: new\nSave path: "
-                    <> path
-                    <> "\nSave glob: *\n"
+            result
+                `shouldBe` [ Normal "Game added successfully:\n"
+                           , Normal "Name: new"
+                           , Normal $ "Save path: " <> path
+                           , Normal "Save glob: *"
+                           , Normal ""
+                           ]
 
     describe "list games" $ do
         it "lists all games in config" $ do
             result <- runReaderT (listOutput listGames) testRunConfig
-            intercalate "\n" result `shouldBe` "another\ntest"
+            result `shouldBe` [Normal "another\ntest"]
 
     describe "print game info" $ do
         it "lists info for all games in config" $ do
             result <- runReaderT (listOutput (infoGames [])) testRunConfig
-            intercalate "\n" result
-                `shouldBe` "Name: another\n\
-                           \Save path: /another/path\n\
-                           \Save glob: save*\n\n\
-                           \Name: test\n\
-                           \Save path: /test/game/path\n"
+            result
+                `shouldBe` [ Normal "Name: another"
+                           , Normal "Save path: /another/path"
+                           , Normal "Save glob: save*"
+                           , Normal ""
+                           , Normal "Name: test"
+                           , Normal "Save path: /test/game/path"
+                           , Normal ""
+                           ]
 
         it "lists info for selected games in config" $ do
             result <-
                 runReaderT
                     (listOutput (infoGames ["another"]))
                     testRunConfig
-            intercalate "\n" result
-                `shouldBe` "Name: another\nSave path: /another/path\nSave glob: save*\n"
+            result
+                `shouldBe` [ Normal "Name: another"
+                           , Normal "Save path: /another/path"
+                           , Normal "Save glob: save*"
+                           , Normal ""
+                           ]
 
     describe "edit game" $ do
         it "edits game in config" $ do
@@ -135,9 +144,12 @@ main = hspec $ do
                         )
                     )
                     testRunConfig
-            intercalate "\n" result
-                `shouldBe` "Name: another\nSave path: /another/path -> " <> path
-                    <> "\nSave glob: save* -> \n"
+            result
+                `shouldBe` [ Normal "Name: another"
+                           , Normal $ "Save path: /another/path -> " <> path <> ""
+                           , Normal "Save glob: save* -> "
+                           , Normal ""
+                           ]
 
         it "edits game in config with new name" $ do
             Just Config{configGames = result} <-
@@ -167,7 +179,7 @@ main = hspec $ do
                         )
                     )
                     testRunConfig
-            head result `shouldBe` "Name: test -> new"
+            head result `shouldBe` Normal "Name: test -> new"
 
     describe "remove game" $ do
         it "removes game from config" $ do
@@ -183,7 +195,10 @@ main = hspec $ do
                 runReaderT
                     (listOutput (return "y" >~ removeGames False ["another", "test"]))
                     testRunConfig
-            sort result
+            let inner (Normal t) = t
+                inner (Warning t) = t
+                inner (Error t) = t
+            sort (map inner result)
                 `shouldBe` [ "Permanently delete another? (y/N) "
                            , "Permanently delete test? (y/N) "
                            , "Removed another"
@@ -211,10 +226,12 @@ main = hspec $ do
                 runReaderT
                     (listOutput (editConfig path (Just 5) (Just 6)))
                     testRunConfig
-            intercalate "\n" result
-                `shouldBe` "Backup path: /backups -> " <> path
-                    <> "\nBackup frequency (in minutes): 15 -> 5\n\
-                       \Number of backups to keep: 20 -> 6\n"
+            result
+                `shouldBe` [ Normal $ "Backup path: /backups -> " <> path
+                           , Normal "Backup frequency (in minutes): 15 -> 5"
+                           , Normal "Number of backups to keep: 20 -> 6"
+                           , Normal ""
+                           ]
 
     describe "save and load config" $ do
         it "works" $ do
