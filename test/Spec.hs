@@ -190,6 +190,22 @@ main = hspec $ do
             length result `shouldBe` length (configGames testConfig) - 1
             length (filter ((== "test") . gameName) result) `shouldBe` 0
 
+        it "doesn't remove game from config on no" $ do
+            Just Config{configGames = result} <-
+                runReaderT
+                    (discardOutput (return "n" >~ removeGames False ["test"]))
+                    testRunConfig
+            length result `shouldBe` length (configGames testConfig)
+            length (filter ((== "test") . gameName) result) `shouldBe` 1
+
+        it "doesn't remove game from config on empty response" $ do
+            Just Config{configGames = result} <-
+                runReaderT
+                    (discardOutput (return "" >~ removeGames False ["test"]))
+                    testRunConfig
+            length result `shouldBe` length (configGames testConfig)
+            length (filter ((== "test") . gameName) result) `shouldBe` 1
+
         it "prints output when removing game" $ do
             result <-
                 runReaderT
