@@ -32,7 +32,8 @@ dependencies:
 - mtl
 - optparse-applicative
 - pipes
-- rainbow >= 0.34.0 && < 0.34.2
+- prettyprinter
+- prettyprinter-ansi-terminal
 - text
 - time
 

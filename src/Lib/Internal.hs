@@ -16,7 +16,9 @@ import Data.Char (toLower)
 import Data.List (elemIndex, intercalate, sort)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Serialize (decode, encode)
+import Data.String (IsString)
 import qualified Data.Text as T
+import Data.Text.Prettyprint.Doc (Doc, Pretty (pretty), annotate)
 import Data.Time (
     UTCTime (utctDay, utctDayTime),
     defaultTimeLocale,
@@ -30,8 +32,7 @@ import Data.Time (
 import Options
 import Pipes (Pipe, await, for, runEffect, yield, (>->))
 import qualified Pipes.Prelude as P
-import Rainbow (Chunk, chunk, fore, hPutChunks, red, yellow)
-import Rainbow.Types (_yarn)
+import Prettyprinter.Render.Terminal (AnsiStyle, Color (Red, Yellow), color, hPutDoc)
 import System.Directory (
     canonicalizePath,
     copyFileWithMetadata,
@@ -57,7 +58,7 @@ import System.FilePath (
     (</>),
  )
 import System.FilePath.Glob (compile, globDir1, matchDefault, matchDotsImplicitly, matchWith)
-import System.IO (Handle, hPutStrLn, stderr)
+import System.IO (Handle, hPutStrLn, stderr, stdout)
 import Types
 
 defaultGlob :: String
@@ -112,8 +113,14 @@ defaultConfig = do
     home <- getHomeDirectory
     return $ Config (home </> "sbu_backups") 15 20 []
 
-printAndLog :: MonadIO m => Chunk -> m ()
-printAndLog s = do
+errorText :: (Pretty a, Semigroup a, IsString a) => a -> Doc AnsiStyle
+errorText = annotate (color Red) . pretty . ("Error: " <>)
+
+warningText :: (Pretty a, Semigroup a, IsString a) => a -> Doc AnsiStyle
+warningText = annotate (color Yellow) . pretty . ("Warning: " <>)
+
+printAndLog :: MonadIO m => Handle -> Doc AnsiStyle -> m ()
+printAndLog h s = do
     logsDir <- liftIO defaultLogsDir
     liftIO $ createDirectoryIfMissing True logsDir
     now <- liftIO getCurrentTime
@@ -123,19 +130,17 @@ printAndLog s = do
             liftIO $
                 logStr
                     logsDir
-                    ( fore red $
-                        chunk $ T.pack $ "Error: " <> show (e :: IOError)
-                    )
+                    (errorText $ show (e :: IOError))
                     now
         _ -> return ()
   where
     logStr logsDir str now = do
-        hPutChunkLn stderr str
+        hPutDocLn h str
         appendFile
             (logsDir </> show (utctDay now) <.> "log")
             ( unlines $
-                map (((formatTime defaultTimeLocale "%X" now <> ": ") <>) . T.unpack) $
-                    T.lines $ _yarn str
+                map ((formatTime defaultTimeLocale "%X" now <> ": ") <>) $
+                    lines $ show str
             )
 
 runSbu :: Sbu -> RunConfig -> IO (Maybe Config)
@@ -174,24 +179,24 @@ writeConfig path config = withLockFile $ do
 maybeWriteConfig :: FilePath -> Maybe Config -> IO ()
 maybeWriteConfig path config = forM_ config (writeConfig path)
 
+hPutDocLn :: Handle -> Doc AnsiStyle -> IO ()
+hPutDocLn h = hPutDoc h . (<> "\n")
+
 printOutput :: MonadIO m => Logger m r -> m r
 printOutput p =
     runEffect $
         for p $
             liftIO
-                . hPutChunkLn stderr
-                . outputToChunk
+                . uncurry hPutDocLn
+                . outputToDoc
 
-hPutChunkLn :: Handle -> Chunk -> IO ()
-hPutChunkLn handle chnk = hPutChunks handle [chnk] >> hPutChunks handle ["\n"]
-
-outputToChunk :: Output -> Chunk
-outputToChunk (Normal s) = chunk $ T.pack s
-outputToChunk (Warning s) = fore yellow $ chunk $ "Warning: " <> T.pack s
-outputToChunk (Error s) = fore red $ chunk $ "Error: " <> T.pack s
+outputToDoc :: Output -> (Handle, Doc AnsiStyle)
+outputToDoc (Normal s) = (stdout, pretty s)
+outputToDoc (Warning s) = (stderr, warningText $ T.pack s)
+outputToDoc (Error s) = (stderr, errorText $ T.pack s)
 
 printAndLogOutput :: MonadIO m => Logger m r -> m r
-printAndLogOutput p = runEffect $ for p (printAndLog . outputToChunk)
+printAndLogOutput p = runEffect $ for p (uncurry printAndLog . outputToDoc)
 
 handleCommand :: Command -> Sbu
 handleCommand (AddCmd (AddOptions game savePath glob)) = do
