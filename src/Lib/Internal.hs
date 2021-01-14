@@ -58,7 +58,7 @@ import System.FilePath (
     (</>),
  )
 import System.FilePath.Glob (compile, globDir1, matchDefault, matchDotsImplicitly, matchWith)
-import System.IO (Handle, hPutStrLn, stderr, stdout)
+import System.IO (Handle, hFlush, hPutStrLn, stderr, stdout)
 import Types
 
 defaultGlob :: String
@@ -180,7 +180,9 @@ maybeWriteConfig :: FilePath -> Maybe Config -> IO ()
 maybeWriteConfig path config = forM_ config (writeConfig path)
 
 hPutDocLn :: Handle -> Doc AnsiStyle -> IO ()
-hPutDocLn h = hPutDoc h . (<> "\n")
+hPutDocLn h doc = do
+    hPutDoc h $ doc <> "\n"
+    hFlush h
 
 printOutput :: MonadIO m => Logger m r -> m r
 printOutput p =
