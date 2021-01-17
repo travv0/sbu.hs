@@ -499,7 +499,7 @@ backupGame gName = do
                     when (backedUpCount > 0) $
                         yield $
                             Normal $
-                                "Finished backing up "
+                                "\nFinished backing up "
                                     <> show backedUpCount
                                     <> " file"
                                     <> (if backedUpCount == 1 then "" else "s")
