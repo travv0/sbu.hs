@@ -458,16 +458,18 @@ backupGames loop games = do
             []
             gamesToBackup
     unless (null warnings) $ do
-        yield $
-            Warning $
+        let msg =
                 show (length warnings) <> " warning"
                     <> (if length warnings == 1 then "" else "s")
                     <> " occurred:"
         if verbose
             then do
-                yield $ Normal ""
+                yield $ Warning $ msg <> "\n"
                 mapM_ (yield . Warning) warnings
-            else yield $ Normal "Pass --verbose flag to print all warnings after backup completes\n"
+            else
+                yield $
+                    Warning $
+                        msg <> "\nPass --verbose flag to print all warnings after backup completes\n"
     if loop
         then do
             liftIO $ threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
