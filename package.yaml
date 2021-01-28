@@ -1,5 +1,5 @@
 name:                sbu
-version:             2.4.1
+version:             2.5.0
 github:              "tssund93/sbu"
 license:             BSD3
 author:              "Travis"
@@ -30,7 +30,7 @@ dependencies:
 - gitrev
 - monadlist
 - mtl
-- optparse-applicative
+- optparse-applicative >= 0.16.1
 - pipes
 - prettyprinter
 - prettyprinter-ansi-terminal

@@ -646,10 +646,8 @@ formatModifiedTime = formatTime defaultTimeLocale "%Y_%m_%d_%H_%M_%S"
 
 infoGame :: MonadReader RunConfig m => String -> Logger m ()
 infoGame gName = do
-    config <- ask
-    let matchingGames =
-            filter (\g -> gameName g == gName) $
-                configGames $ runConfigConfig config
+    cGames <- asks $ configGames . runConfigConfig
+    let matchingGames = filter (\g -> gameName g == gName) cGames
     case matchingGames of
         [] -> warnMissingGames [gName]
         game : _ -> printGame game Nothing Nothing Nothing
@@ -679,10 +677,10 @@ promptRemove game = do
 
 warnMissingGames :: (MonadReader RunConfig m, Foldable t) => t String -> Logger m ()
 warnMissingGames games = do
-    config <- asks runConfigConfig
+    cGames <- asks $ configGames . runConfigConfig
     mapM_
         ( \g ->
-            when (g `notElem` map gameName (configGames config)) $
+            when (g `notElem` map gameName cGames) $
                 yield $ Warning $ "No game named `" <> g <> "'"
         )
         games

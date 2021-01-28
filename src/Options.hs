@@ -16,6 +16,8 @@ import Data.String (IsString)
 import Data.Version (showVersion)
 import Development.GitRev (gitHash)
 import Options.Applicative hiding (helper, infoParser)
+import Options.Applicative.Builder.Internal (noGlobal)
+import Options.Applicative.Types (readerAsk)
 import Paths_sbu (version)
 
 data SbuOptions = SbuOptions
@@ -326,9 +328,18 @@ maybeAuto = eitherReader $ \arg -> case reads arg of
 
 helper :: Parser (a -> a)
 helper =
-    abortOption ShowHelpText $
+    option helpReader $
         mconcat
             [ long "help"
             , short 'h'
             , help "Show this help text"
+            , value id
+            , metavar ""
+            , noGlobal
+            , noArgError (ShowHelpText Nothing)
             ]
+  where
+    helpReader = do
+        potentialCommand <- readerAsk
+        readerAbort $
+            ShowHelpText (Just potentialCommand)
