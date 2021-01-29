@@ -32,7 +32,12 @@ import Data.Time (
 import Options
 import Pipes (Pipe, await, for, runEffect, yield, (>->))
 import qualified Pipes.Prelude as P
-import Prettyprinter.Render.Terminal (AnsiStyle, Color (Red, Yellow), color, hPutDoc)
+import Prettyprinter.Render.Terminal (
+    AnsiStyle,
+    Color (Red, Yellow),
+    color,
+    hPutDoc,
+ )
 import System.Directory (
     canonicalizePath,
     copyFileWithMetadata,
@@ -57,7 +62,13 @@ import System.FilePath (
     (<.>),
     (</>),
  )
-import System.FilePath.Glob (compile, globDir1, matchDefault, matchDotsImplicitly, matchWith)
+import System.FilePath.Glob (
+    compile,
+    globDir1,
+    matchDefault,
+    matchDotsImplicitly,
+    matchWith,
+ )
 import System.IO (Handle, hFlush, hPutStrLn, stderr, stdout)
 import Types
 
@@ -210,10 +221,14 @@ handleCommand (RemoveCmd (RemoveOptions games yes)) =
     printOutput $ P.repeatM (liftIO getLine) >-> removeGames yes games
 handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) =
     printOutput $ editGame game mNewName mNewPath mNewGlob
-handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) = do
-    config <- asks runConfigConfig
-    newBackupDir <- liftIO $ canonicalizePath' $ fromMaybe (configBackupDir config) mBackupDir
-    printOutput $ editConfig newBackupDir mBackupFreq mBackupsToKeep
+handleCommand
+    (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) = do
+        config <- asks runConfigConfig
+        newBackupDir <-
+            liftIO $
+                canonicalizePath' $
+                    fromMaybe (configBackupDir config) mBackupDir
+        printOutput $ editConfig newBackupDir mBackupFreq mBackupsToKeep
 handleCommand (ConfigCmd ConfigDefaults) = do
     dc <- liftIO defaultConfig
     printOutput $
@@ -241,7 +256,8 @@ addGame game path glob = do
     config <- asks runConfigConfig
     if
             | game `elem` map gameName (configGames config) -> do
-                yield $ Error $ "Game with the name " <> game <> " already exists"
+                yield $
+                    Error $ "Game with the name " <> game <> " already exists"
                 return Nothing
             | not $ isValidGameName game -> do
                 yield $
@@ -264,7 +280,11 @@ addGame game path glob = do
                             newGame = Game game path newGlob
                         yield $ Normal "Game added successfully:\n"
                         printGame newGame Nothing Nothing Nothing
-                        return $ Just $ config{configGames = newGame : configGames config}
+                        return $
+                            Just $
+                                config
+                                    { configGames = newGame : configGames config
+                                    }
 
 canonicalizePath' :: FilePath -> IO FilePath
 canonicalizePath' ('~' : path) = do
@@ -279,13 +299,18 @@ listGames = do
     yield $ Normal $ intercalate "\n" gNames
     return Nothing
 
-removeGames :: MonadReader RunConfig m => Bool -> [String] -> Pipe String Output m (Maybe Config)
+removeGames ::
+    MonadReader RunConfig m =>
+    Bool ->
+    [String] ->
+    Pipe String Output m (Maybe Config)
 removeGames yes games = do
     config <- asks runConfigConfig
     if yes
         then do
             yield $
-                Normal $ "Removed the following games:\n" <> intercalate "\n" games
+                Normal $
+                    "Removed the following games:\n" <> intercalate "\n" games
             return $
                 Just $
                     config
@@ -299,11 +324,18 @@ removeGames yes games = do
                 filterM promptRemove $
                     filter ((`elem` games) . gameName) $
                         configGames config
-            mapM_ (\g -> yield $ Normal $ "Removed " <> gameName g) gamesToRemove
+            mapM_
+                (\g -> yield $ Normal $ "Removed " <> gameName g)
+                gamesToRemove
             return $
                 Just $
                     config
-                        { configGames = filter ((`notElem` map gameName gamesToRemove) . gameName) $ configGames config
+                        { configGames =
+                            filter
+                                ( (`notElem` map gameName gamesToRemove)
+                                    . gameName
+                                )
+                                $ configGames config
                         }
 
 infoGames :: MonadReader RunConfig m => [String] -> Logger m (Maybe Config)
@@ -331,7 +363,9 @@ editGame gName mNewName mNewPath mNewGlob = do
                         <> " doesn't exist"
             return Nothing
         (_, Nothing, Nothing, Nothing) -> do
-            yield $ Error "One or more of --name, --path, or --glob must be provided."
+            yield $
+                Error
+                    "One or more of --name, --path, or --glob must be provided."
             return Nothing
         (Just g, _, _, _) -> do
             let i = elemIndex (gameName g) $ map gameName (configGames config)
@@ -346,7 +380,10 @@ editGame gName mNewName mNewPath mNewGlob = do
                         newGlob = case fromMaybe (gameGlob game) mNewGlob of
                             "none" -> ""
                             glob -> glob
-                    newPath <- liftIO $ canonicalizePath' $ fromMaybe (gamePath game) mNewPath
+                    newPath <-
+                        liftIO $
+                            canonicalizePath' $
+                                fromMaybe (gamePath game) mNewPath
                     let editedGame =
                             game
                                 { gameName = newName
@@ -363,21 +400,35 @@ editGame gName mNewName mNewPath mNewGlob = do
                             | not $ isValidGameName newName -> do
                                 yield $
                                     Error $
-                                        "Invalid characters in name `" <> newName
+                                        "Invalid characters in name `"
+                                            <> newName
                                             <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
                                 return Nothing
                             | otherwise -> do
-                                printGame game (Just newName) (Just newPath) (Just newGlob)
+                                printGame
+                                    game
+                                    (Just newName)
+                                    (Just newPath)
+                                    (Just newGlob)
                                 backupDirExists <-
-                                    liftIO $ doesDirectoryExist $ configBackupDir config </> gName
+                                    liftIO $
+                                        doesDirectoryExist $
+                                            configBackupDir config </> gName
                                 when (isJust mNewName && backupDirExists) $ do
-                                    yield $ Warning "Game name changed, renaming backup directory..."
+                                    yield $
+                                        Warning
+                                            "Game name changed, renaming backup directory..."
                                     liftIO $
                                         renameDirectory
                                             (configBackupDir config </> gName)
                                             (configBackupDir config </> newName)
 
-                                return $ Just $ config{configGames = front <> (editedGame : back)}
+                                return $
+                                    Just $
+                                        config
+                                            { configGames =
+                                                front <> (editedGame : back)
+                                            }
 
 printConfigRow :: Functor m => String -> String -> Maybe String -> Logger m ()
 printConfigRow label val newVal =
@@ -451,7 +502,9 @@ backupGames loop games = do
             ( \acc game -> do
                 warnings <-
                     backupGame game `catchIOError` \e -> do
-                        yield $ Error $ "Error backing up " <> game <> ": " <> show e
+                        yield $
+                            Error $
+                                "Error backing up " <> game <> ": " <> show e
                         return []
                 return $ acc <> warnings
             )
@@ -472,7 +525,9 @@ backupGames loop games = do
                         msg <> "\nPass --verbose flag to print all warnings after backup completes\n"
     if loop
         then do
-            liftIO $ threadDelay $ fromIntegral $ configBackupFreq config * 60 * 1000000
+            liftIO $
+                threadDelay $
+                    fromIntegral $ configBackupFreq config * 60 * 1000000
             backupGames loop games
         else return Nothing
 
@@ -508,21 +563,30 @@ backupGame gName = do
                                     <> ( if null warnings
                                             then ""
                                             else
-                                                " with " <> show (length warnings) <> " warning"
-                                                    <> (if length warnings == 1 then "" else "s")
+                                                " with "
+                                                    <> show (length warnings)
+                                                    <> " warning"
+                                                    <> ( if length warnings == 1
+                                                            then ""
+                                                            else "s"
+                                                       )
                                        )
                                     <> " for "
                                     <> gName
                                     <> " in "
                                     <> show (diffUTCTime now startTime)
                                     <> " on "
-                                    <> formatTime defaultTimeLocale "%c" (utcToLocalTime tz now)
+                                    <> formatTime
+                                        defaultTimeLocale
+                                        "%c"
+                                        (utcToLocalTime tz now)
                                     <> "\n"
                     return warnings
                 else do
                     yield $
                         Warning $
-                            "Path set for " <> gName <> " doesn't exist: " <> gamePath game
+                            "Path set for " <> gName <> " doesn't exist: "
+                                <> gamePath game
                     return []
         Nothing -> do
             warnMissingGames [gName]
@@ -540,7 +604,8 @@ backupFiles game basePath glob from to = do
     files <- liftIO $ listDirectory from
     foldM
         ( \(c, es) f -> do
-            (newCount, newErrs) <- backupFile game basePath glob (from </> f) (to </> f)
+            (newCount, newErrs) <-
+                backupFile game basePath glob (from </> f) (to </> f)
             return (c + newCount, es <> newErrs)
         )
         (0, [])
@@ -586,18 +651,21 @@ backupFile game basePath glob from to = do
                         }
                         /= toModTime
                             { utctDayTime =
-                                secondsToDiffTime $ round $ utctDayTime toModTime
+                                secondsToDiffTime $
+                                    round $ utctDayTime toModTime
                             }
                         then do
                             liftIO $
                                 renameFile to $
-                                    to <.> "bak" <.> formatModifiedTime toModTime
+                                    to <.> "bak"
+                                        <.> formatModifiedTime toModTime
                             copyAndCleanup
                         else return (0, [])
                 Nothing -> copyAndCleanup
             `catchIOError` \e -> do
                 let warning =
-                        "Unable to backup file " <> to <> " for game " <> game <> ":\n"
+                        "Unable to backup file " <> to <> " for game " <> game
+                            <> ":\n"
                             <> show e
                             <> "\n"
                 yield $ Warning warning
@@ -609,7 +677,10 @@ backupFile game basePath glob from to = do
         cleanupBackups to
         return (1, [])
 
-cleanupBackups :: (MonadIO m, MonadReader RunConfig m) => FilePath -> Logger m ()
+cleanupBackups ::
+    (MonadIO m, MonadReader RunConfig m) =>
+    FilePath ->
+    Logger m ()
 cleanupBackups backupPath = do
     RunConfig{runConfigConfig = config, runConfigVerbose = verbose} <- ask
     when (configBackupsToKeep config > 0) $ do
@@ -675,7 +746,10 @@ promptRemove game = do
     input <- await
     return $ toLower (head $ if null input then "n" else input) == 'y'
 
-warnMissingGames :: (MonadReader RunConfig m, Foldable t) => t String -> Logger m ()
+warnMissingGames ::
+    (MonadReader RunConfig m, Foldable t) =>
+    t String ->
+    Logger m ()
 warnMissingGames games = do
     cGames <- asks $ configGames . runConfigConfig
     mapM_

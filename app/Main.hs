@@ -9,4 +9,5 @@ import System.IO (hPutStrLn, stderr)
 main :: IO ()
 main =
     (handleOptions =<< execParser (info opts idm))
-        `catchIOError` \e -> hPutStrLn stderr $ "An unhandled error occurred: " ++ show e
+        `catchIOError` \e ->
+            hPutStrLn stderr $ "An unhandled error occurred: " ++ show e
