@@ -134,14 +134,14 @@ defaultConfig = do
     home <- getHomeDirectory
     return $ Config (home </> "sbu_backups") 15 20 []
 
-colorText :: (Pretty a, Semigroup a) => Color -> a -> a -> Doc AnsiStyle
-colorText c t = annotate (color c) . pretty . (t <>)
+colorText :: (Pretty a, Semigroup a) => Color -> a -> Doc AnsiStyle
+colorText c = annotate (color c) . pretty
 
 errorText :: (Pretty a, Semigroup a, IsString a) => a -> Doc AnsiStyle
-errorText = colorText Red "Error: "
+errorText = colorText Red . ("Error: " <>)
 
 warningText :: (Pretty a, Semigroup a, IsString a) => a -> Doc AnsiStyle
-warningText = colorText Yellow "Warning: "
+warningText = colorText Yellow . ("Warning: " <>)
 
 printAndLog :: MonadIO m => Handle -> Doc AnsiStyle -> m ()
 printAndLog h s = do
