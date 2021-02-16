@@ -18,6 +18,7 @@ import Data.List (elemIndex, intercalate, sort)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Serialize (decode, encode)
+import Data.Set (Set)
 import Data.String (IsString)
 import qualified Data.Text as T
 import Data.Text.Prettyprint.Doc (Doc, Pretty, annotate, pretty)
@@ -33,6 +34,7 @@ import Data.Time (
     utctDay,
     utctDayTime,
  )
+import GHC.Exts (fromList)
 import Options (
     AddOptions (..),
     BackupOptions (..),
@@ -250,12 +252,13 @@ handleCommand (BackupCmd (BackupOptions games loop verbose)) =
     local (\c -> c{runConfigVerbose = verbose}) $
         printAndLogOutput $ backupGames loop games
 
-validGameNameChars :: [Char]
+validGameNameChars :: Set Char
 validGameNameChars =
-    ['A' .. 'Z']
-        <> ['a' .. 'z']
-        <> ['0' .. '9']
-        <> ['-', '_']
+    fromList $
+        ['A' .. 'Z']
+            <> ['a' .. 'z']
+            <> ['0' .. '9']
+            <> ['-', '_']
 
 isValidGameName :: String -> Bool
 isValidGameName = all (`elem` validGameNameChars)
