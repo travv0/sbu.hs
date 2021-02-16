@@ -14,6 +14,8 @@ import Control.Monad.Reader (MonadReader (ask, local), ReaderT (runReaderT), ask
 import qualified Data.ByteString as BS
 import Data.Char (toLower)
 import Data.List (elemIndex, intercalate, sort)
+import Data.List.NonEmpty (NonEmpty)
+import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe (fromMaybe, isJust)
 import Data.Serialize (decode, encode)
 import Data.String (IsString)
@@ -29,7 +31,15 @@ import Data.Time (
     secondsToDiffTime,
     utcToLocalTime,
  )
-import Options
+import Options (
+    AddOptions (..),
+    BackupOptions (..),
+    Command (..),
+    ConfigOptions (..),
+    EditOptions (..),
+    InfoOptions (..),
+    RemoveOptions (..),
+ )
 import Pipes (Pipe, await, for, runEffect, yield, (>->))
 import qualified Pipes.Prelude as P
 import Prettyprinter.Render.Terminal (
@@ -70,7 +80,7 @@ import System.FilePath.Glob (
     matchWith,
  )
 import System.IO (Handle, hFlush, hPutStrLn, stderr, stdout)
-import Types
+import Types (Config (..), Game (..), Logger, Output (..), RunConfig (..), Sbu)
 
 defaultGlob :: String
 defaultGlob = "**/*"
@@ -124,11 +134,14 @@ defaultConfig = do
     home <- getHomeDirectory
     return $ Config (home </> "sbu_backups") 15 20 []
 
+colorText :: (Pretty a, Semigroup a) => Color -> a -> a -> Doc AnsiStyle
+colorText c t = annotate (color c) . pretty . (t <>)
+
 errorText :: (Pretty a, Semigroup a, IsString a) => a -> Doc AnsiStyle
-errorText = annotate (color Red) . pretty . ("Error: " <>)
+errorText = colorText Red "Error: "
 
 warningText :: (Pretty a, Semigroup a, IsString a) => a -> Doc AnsiStyle
-warningText = annotate (color Yellow) . pretty . ("Warning: " <>)
+warningText = colorText Yellow "Warning: "
 
 printAndLog :: MonadIO m => Handle -> Doc AnsiStyle -> m ()
 printAndLog h s = do
@@ -241,7 +254,11 @@ handleCommand (BackupCmd (BackupOptions games loop verbose)) =
         printAndLogOutput $ backupGames loop games
 
 validGameNameChars :: [Char]
-validGameNameChars = ['A' .. 'z'] <> ['0' .. '9'] <> ['-', '_']
+validGameNameChars =
+    ['A' .. 'Z']
+        <> ['a' .. 'z']
+        <> ['0' .. '9']
+        <> ['-', '_']
 
 isValidGameName :: String -> Bool
 isValidGameName = all (`elem` validGameNameChars)
@@ -265,7 +282,7 @@ addGame game path glob = do
                         "Invalid characters in name `" <> game
                             <> "': only alphanumeric characters, underscores, and hyphens are allowed"
                 return Nothing
-            | otherwise -> do
+            | otherwise ->
                 if isRelative path
                     then do
                         yield $
@@ -302,7 +319,7 @@ listGames = do
 removeGames ::
     MonadReader RunConfig m =>
     Bool ->
-    [String] ->
+    NonEmpty String ->
     Pipe String Output m (Maybe Config)
 removeGames yes games = do
     config <- asks runConfigConfig
@@ -310,7 +327,7 @@ removeGames yes games = do
         then do
             yield $
                 Normal $
-                    "Removed the following games:\n" <> intercalate "\n" games
+                    "Removed the following games:\n" <> intercalate "\n" (NonEmpty.toList games)
             return $
                 Just $
                     config

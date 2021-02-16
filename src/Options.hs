@@ -12,11 +12,39 @@ module Options (
     opts,
 ) where
 
+import Data.List.NonEmpty (NonEmpty)
 import Data.String (IsString)
 import Data.Version (showVersion)
 import Development.GitRev (gitHash)
-import Options.Applicative hiding (helper, infoParser)
+import Options.Applicative (
+    ParseError (ShowHelpText),
+    Parser,
+    ReadM,
+    argument,
+    command,
+    eitherReader,
+    flag',
+    fullDesc,
+    help,
+    hsubparser,
+    info,
+    infoOption,
+    long,
+    many,
+    metavar,
+    noArgError,
+    option,
+    progDesc,
+    readerAbort,
+    short,
+    str,
+    strOption,
+    switch,
+    value,
+    (<|>),
+ )
 import Options.Applicative.Builder.Internal (noGlobal)
+import Options.Applicative.NonEmpty (some1)
 import Options.Applicative.Types (readerAsk)
 import Paths_sbu (version)
 
@@ -56,7 +84,7 @@ newtype InfoOptions = InfoOptions
     deriving (Show)
 
 data RemoveOptions = RemoveOptions
-    { removeOptGames :: [String]
+    { removeOptGames :: NonEmpty String
     , removeOptYes :: Bool
     }
     deriving (Show)
@@ -133,7 +161,7 @@ addParser =
                             "Save file glob for added game's save files. \
                             \Only files matching this pattern will be backed up. \
                             \The default is **/* which will recursively back up \
-                            \all saves in SAVE_PATH"
+                            \all files in SAVE_PATH"
                         ]
                     )
             )
@@ -157,7 +185,7 @@ removeParser :: Parser Command
 removeParser =
     RemoveCmd
         <$> ( RemoveOptions
-                <$> some
+                <$> some1
                     ( argument
                         str
                         ( mconcat
