@@ -2,13 +2,29 @@
 
 import Control.Monad.Reader (runReaderT)
 import Data.List (sort)
-import Lib.Internal
+import GHC.Exts (fromList)
+import Lib.Internal (
+    addGame,
+    editConfig,
+    editGame,
+    infoGames,
+    listGames,
+    readConfig,
+    removeGames,
+    writeConfig,
+ )
 import Pipes (runEffect, void, (>->), (>~))
 import qualified Pipes.Prelude as P
 import System.Directory (canonicalizePath)
-import System.IO.Temp
-import Test.Hspec
-import Types
+import System.IO.Temp (withSystemTempFile)
+import Test.Hspec (describe, hspec, it, shouldBe)
+import Types (
+    Config (..),
+    Game (Game, gameGlob, gameName, gamePath),
+    Logger,
+    Output (..),
+    RunConfig (..),
+ )
 
 testConfig :: Config
 testConfig =
@@ -185,7 +201,7 @@ main = hspec $ do
         it "removes game from config" $ do
             Just Config{configGames = result} <-
                 runReaderT
-                    (discardOutput (return "" >~ removeGames True ["test"]))
+                    (discardOutput (return "" >~ removeGames True (fromList ["test"])))
                     testRunConfig
             length result `shouldBe` length (configGames testConfig) - 1
             length (filter ((== "test") . gameName) result) `shouldBe` 0
@@ -193,7 +209,7 @@ main = hspec $ do
         it "doesn't remove game from config on no" $ do
             Just Config{configGames = result} <-
                 runReaderT
-                    (discardOutput (return "n" >~ removeGames False ["test"]))
+                    (discardOutput (return "n" >~ removeGames False (fromList ["test"])))
                     testRunConfig
             length result `shouldBe` length (configGames testConfig)
             length (filter ((== "test") . gameName) result) `shouldBe` 1
@@ -201,7 +217,7 @@ main = hspec $ do
         it "doesn't remove game from config on empty response" $ do
             Just Config{configGames = result} <-
                 runReaderT
-                    (discardOutput (return "" >~ removeGames False ["test"]))
+                    (discardOutput (return "" >~ removeGames False (fromList ["test"])))
                     testRunConfig
             length result `shouldBe` length (configGames testConfig)
             length (filter ((== "test") . gameName) result) `shouldBe` 1
@@ -209,7 +225,7 @@ main = hspec $ do
         it "prints output when removing game" $ do
             result <-
                 runReaderT
-                    (listOutput (return "y" >~ removeGames False ["another", "test"]))
+                    (listOutput (return "y" >~ removeGames False (fromList ["another", "test"])))
                     testRunConfig
             let inner (Normal t) = t
                 inner (Warning t) = t
