@@ -10,19 +10,19 @@ import Control.Monad (filterM, foldM, forM_, unless, when)
 import Control.Monad.Catch (MonadCatch, MonadMask, catchIOError, finally, try)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.ListM (sortByM)
-import Control.Monad.Reader (MonadReader (ask, local), ReaderT (runReaderT), asks)
+import Control.Monad.Reader (MonadReader, ask, asks, local, runReaderT)
 import qualified Data.ByteString as BS
 import Data.Char (toLower)
+import Data.Foldable (toList)
 import Data.List (elemIndex, intercalate, sort)
 import Data.List.NonEmpty (NonEmpty)
-import qualified Data.List.NonEmpty as NonEmpty
 import Data.Maybe (fromMaybe, isJust)
 import Data.Serialize (decode, encode)
 import Data.String (IsString)
 import qualified Data.Text as T
-import Data.Text.Prettyprint.Doc (Doc, Pretty (pretty), annotate)
+import Data.Text.Prettyprint.Doc (Doc, Pretty, annotate, pretty)
 import Data.Time (
-    UTCTime (utctDay, utctDayTime),
+    UTCTime,
     defaultTimeLocale,
     diffUTCTime,
     formatTime,
@@ -30,6 +30,8 @@ import Data.Time (
     getCurrentTimeZone,
     secondsToDiffTime,
     utcToLocalTime,
+    utctDay,
+    utctDayTime,
  )
 import Options (
     AddOptions (..),
@@ -42,12 +44,7 @@ import Options (
  )
 import Pipes (Pipe, await, for, runEffect, yield, (>->))
 import qualified Pipes.Prelude as P
-import Prettyprinter.Render.Terminal (
-    AnsiStyle,
-    Color (Red, Yellow),
-    color,
-    hPutDoc,
- )
+import Prettyprinter.Render.Terminal (AnsiStyle, Color (..), color, hPutDoc)
 import System.Directory (
     canonicalizePath,
     copyFileWithMetadata,
@@ -327,7 +324,8 @@ removeGames yes games = do
         then do
             yield $
                 Normal $
-                    "Removed the following games:\n" <> intercalate "\n" (NonEmpty.toList games)
+                    "Removed the following games:\n"
+                        <> intercalate "\n" (toList games)
             return $
                 Just $
                     config
