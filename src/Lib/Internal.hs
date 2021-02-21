@@ -248,9 +248,9 @@ handleCommand (ConfigCmd ConfigDefaults) = do
             (configBackupDir dc)
             (Just $ configBackupFreq dc)
             (Just $ configBackupsToKeep dc)
-handleCommand (BackupCmd (BackupOptions games loop verbose)) =
-    local (\c -> c{runConfigVerbose = verbose}) $
-        printAndLogOutput $ backupGames loop games
+handleCommand (BackupCmd (BackupOptions games loop verbose shouldLog)) =
+    let r = local (\c -> c{runConfigVerbose = verbose}) $ backupGames loop games
+     in if shouldLog then printAndLogOutput r else printOutput r
 
 validGameNameChars :: Set Char
 validGameNameChars =

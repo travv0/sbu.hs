@@ -68,6 +68,7 @@ data BackupOptions = BackupOptions
     { backupOptGames :: [String]
     , backupOptLoop :: Bool
     , backupOptVerbose :: Bool
+    , backupOptLog :: Bool
     }
     deriving (Show)
 
@@ -133,6 +134,12 @@ backupParser =
                         [ long "verbose"
                         , short 'v'
                         , help "Print verbose output"
+                        ]
+                    )
+                <*> switch
+                    ( mconcat
+                        [ long "log"
+                        , help "Log output to file in config directory"
                         ]
                     )
             )
