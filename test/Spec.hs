@@ -228,6 +228,7 @@ main = hspec $ do
                     (listOutput (return "y" >~ removeGames False (fromList ["another", "test"])))
                     testRunConfig
             let inner (Normal t) = t
+                inner (Info t) = t
                 inner (Warning t) = t
                 inner (Error t) = t
             sort (map inner result)

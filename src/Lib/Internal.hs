@@ -57,6 +57,7 @@ import System.Directory (
     getHomeDirectory,
     getModificationTime,
     listDirectory,
+    pathIsSymbolicLink,
     removeFile,
     renameDirectory,
     renameFile,
@@ -142,6 +143,9 @@ errorText = colorText Red . ("Error: " <>)
 warningText :: (Pretty a, Semigroup a, IsString a) => a -> Doc AnsiStyle
 warningText = colorText Yellow . ("Warning: " <>)
 
+infoText :: (Pretty a, Semigroup a, IsString a) => a -> Doc AnsiStyle
+infoText = colorText Blue . ("Info: " <>)
+
 printAndLog :: MonadIO m => Handle -> Doc AnsiStyle -> m ()
 printAndLog h s = do
     logsDir <- liftIO defaultLogsDir
@@ -208,15 +212,11 @@ hPutDocLn h doc = do
     hFlush h
 
 printOutput :: MonadIO m => Logger m r -> m r
-printOutput p =
-    runEffect $
-        for p $
-            liftIO
-                . uncurry hPutDocLn
-                . outputToDoc
+printOutput p = runEffect $ for p $ liftIO . uncurry hPutDocLn . outputToDoc
 
 outputToDoc :: Output -> (Handle, Doc AnsiStyle)
 outputToDoc (Normal s) = (stdout, pretty s)
+outputToDoc (Info s) = (stderr, infoText $ T.pack s)
 outputToDoc (Warning s) = (stderr, warningText $ T.pack s)
 outputToDoc (Error s) = (stderr, errorText $ T.pack s)
 
@@ -371,22 +371,14 @@ editGame ::
     Logger m (Maybe Config)
 editGame gName mNewName mNewPath mNewGlob = do
     config <- asks runConfigConfig
-    mGame <- getGameByName gName
-    case (mGame, mNewName, mNewPath, mNewGlob) of
-        (Nothing, _, _, _) -> do
-            yield $
-                Error $
-                    "Game with the name "
-                        <> gName
-                        <> " doesn't exist"
-            return Nothing
-        (_, Nothing, Nothing, Nothing) -> do
+    case (mNewName, mNewPath, mNewGlob) of
+        (Nothing, Nothing, Nothing) -> do
             yield $
                 Error
                     "One or more of --name, --path, or --glob must be provided."
             return Nothing
-        (Just g, _, _, _) -> do
-            let i = elemIndex (gameName g) $ map gameName (configGames config)
+        (_, _, _) -> do
+            let i = elemIndex gName $ map gameName (configGames config)
                 mSplitList = splitAt <$> i <*> pure (configGames config)
             case mSplitList of
                 Nothing -> do
@@ -434,7 +426,7 @@ editGame gName mNewName mNewPath mNewGlob = do
                                             configBackupDir config </> gName
                                 when (isJust mNewName && backupDirExists) $ do
                                     yield $
-                                        Warning
+                                        Info
                                             "Game name changed, renaming backup directory..."
                                     liftIO $
                                         renameDirectory
@@ -655,31 +647,40 @@ backupFile game basePath glob from to = do
             from
     backupFile' =
         do
-            backupExists <- liftIO $ doesFileExist to
-            fromModTime <- liftIO $ getModificationTime from
-            mToModTime <-
-                if backupExists
-                    then liftIO $ Just <$> getModificationTime to
-                    else return Nothing
-            case mToModTime of
-                Just toModTime ->
-                    if fromModTime
-                        { utctDayTime =
-                            secondsToDiffTime $ round $ utctDayTime fromModTime
-                        }
-                        /= toModTime
-                            { utctDayTime =
-                                secondsToDiffTime $
-                                    round $ utctDayTime toModTime
-                            }
-                        then do
-                            liftIO $
-                                renameFile to $
-                                    to <.> "bak"
-                                        <.> formatModifiedTime toModTime
-                            copyAndCleanup
-                        else return (0, [])
-                Nothing -> copyAndCleanup
+            verbose <- asks runConfigVerbose
+            isSymlink <- liftIO $ pathIsSymbolicLink from
+            if isSymlink
+                then do
+                    when verbose $
+                        yield $ Info $ from <> " appears to be a link to somewhere else in the filesystem. Skipping..."
+                    return (0, [])
+                else do
+                    backupExists <- liftIO $ doesFileExist to
+                    fromModTime <- liftIO $ getModificationTime from
+                    mToModTime <-
+                        if backupExists
+                            then liftIO $ Just <$> getModificationTime to
+                            else return Nothing
+                    case mToModTime of
+                        Just toModTime ->
+                            if fromModTime
+                                { utctDayTime =
+                                    secondsToDiffTime $
+                                        round $ utctDayTime fromModTime
+                                }
+                                /= toModTime
+                                    { utctDayTime =
+                                        secondsToDiffTime $
+                                            round $ utctDayTime toModTime
+                                    }
+                                then do
+                                    liftIO $
+                                        renameFile to $
+                                            to <.> "bak"
+                                                <.> formatModifiedTime toModTime
+                                    copyAndCleanup
+                                else return (0, [])
+                        Nothing -> copyAndCleanup
             `catchIOError` \e -> do
                 let warning =
                         "Unable to backup file " <> to <> " for game " <> game
@@ -725,7 +726,7 @@ cleanupBackups backupPath = do
                     drop (fromIntegral $ configBackupsToKeep config) sortedFiles
             mapM_
                 ( \f -> do
-                    when verbose $ yield $ Warning $ "Deleting " <> f
+                    when verbose $ yield $ Info $ "Deleting " <> f
                     liftIO $ removeFile f
                 )
                 filesToDelete

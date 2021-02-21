@@ -17,7 +17,7 @@ import Pipes (Producer')
 
 type Sbu = ReaderT RunConfig IO (Maybe Config)
 
-data Output = Normal String | Warning String | Error String
+data Output = Normal String | Info String | Warning String | Error String
     deriving (Show, Eq)
 
 type Logger m a = Producer' Output m a
