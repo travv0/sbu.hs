@@ -6,14 +6,14 @@
 module Lib.Internal where
 
 import Control.Concurrent (threadDelay)
-import Control.Monad (filterM, foldM, forM_, unless, when)
+import Control.Monad (filterM, foldM, unless, when)
 import Control.Monad.Catch (MonadCatch, MonadMask, catchIOError, finally, try)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Monad.ListM (sortByM)
 import Control.Monad.Reader (MonadReader, ask, asks, local, runReaderT)
 import qualified Data.ByteString as BS
 import Data.Char (toLower)
-import Data.Foldable (toList)
+import Data.Foldable (find, toList, traverse_)
 import Data.List (elemIndex, intercalate, sort)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (fromMaybe, isJust)
@@ -204,7 +204,7 @@ writeConfig path config = withLockFile $ do
     BS.writeFile path $ encode config
 
 maybeWriteConfig :: FilePath -> Maybe Config -> IO ()
-maybeWriteConfig path config = forM_ config (writeConfig path)
+maybeWriteConfig path = traverse_ (writeConfig path)
 
 hPutDocLn :: Handle -> Doc AnsiStyle -> IO ()
 hPutDocLn h doc = do
@@ -780,7 +780,5 @@ warnMissingGames games = do
 
 getGameByName :: MonadReader RunConfig m => String -> m (Maybe Game)
 getGameByName name = do
-    config <- asks runConfigConfig
-    case filter (\g -> gameName g == name) $ configGames config of
-        [] -> return Nothing
-        (game : _) -> return $ Just game
+    games <- asks $ configGames . runConfigConfig
+    return $ find ((==) name . gameName) games
