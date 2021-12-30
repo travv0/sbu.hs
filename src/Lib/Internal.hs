@@ -21,7 +21,6 @@ import Data.Serialize (decode, encode)
 import Data.Set (Set)
 import Data.String (IsString)
 import qualified Data.Text as T
-import Data.Text.Prettyprint.Doc (Doc, Pretty, annotate, pretty)
 import Data.Time (
     UTCTime,
     defaultTimeLocale,
@@ -46,6 +45,7 @@ import Options (
  )
 import Pipes (Pipe, await, for, runEffect, yield, (>->))
 import qualified Pipes.Prelude as P
+import Prettyprinter (Doc, Pretty, annotate, pretty)
 import Prettyprinter.Render.Terminal (AnsiStyle, Color (..), color, hPutDoc)
 import System.Directory (
     canonicalizePath,

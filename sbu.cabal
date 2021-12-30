@@ -1,0 +1,116 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.33.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: d3b4f9b9f61664d8fe93f527d6caf3b93d3babc0c9ab13b848966f94f1c763a0
+
+name:           sbu
+version:        2.7.0
+description:    Please see the README on GitHub at <https://github.com/tssund93/sbu#readme>
+homepage:       https://github.com/tssund93/sbu#readme
+bug-reports:    https://github.com/tssund93/sbu/issues
+author:         Travis
+maintainer:     tssund93@gmail.com
+copyright:      2018 Travis
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+    ChangeLog.md
+
+source-repository head
+  type: git
+  location: https://github.com/tssund93/sbu
+
+library
+  exposed-modules:
+      Lib
+      Lib.Internal
+      Options
+      Types
+  other-modules:
+      Paths_sbu
+  hs-source-dirs:
+      src
+  ghc-options: -O2 -Wall
+  build-depends:
+      Glob
+    , base >=4.7
+    , bytestring
+    , cereal
+    , containers
+    , directory
+    , exceptions
+    , filepath
+    , gitrev
+    , monadlist
+    , mtl
+    , optparse-applicative
+    , pipes
+    , prettyprinter
+    , prettyprinter-ansi-terminal
+    , text
+    , time
+  default-language: Haskell2010
+
+executable sbu
+  main-is: Main.hs
+  other-modules:
+      Paths_sbu
+  hs-source-dirs:
+      app
+  ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N -Wall
+  build-depends:
+      Glob
+    , base >=4.7
+    , bytestring
+    , cereal
+    , containers
+    , directory
+    , exceptions
+    , filepath
+    , gitrev
+    , monadlist
+    , mtl
+    , optparse-applicative
+    , pipes
+    , prettyprinter
+    , prettyprinter-ansi-terminal
+    , sbu
+    , text
+    , time
+  default-language: Haskell2010
+
+test-suite tests
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+      Paths_sbu
+  hs-source-dirs:
+      test
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N -Wall
+  build-depends:
+      Glob
+    , base >=4.7
+    , bytestring
+    , cereal
+    , containers
+    , directory
+    , exceptions
+    , filepath
+    , gitrev
+    , hspec
+    , monadlist
+    , mtl
+    , optparse-applicative
+    , pipes
+    , prettyprinter
+    , prettyprinter-ansi-terminal
+    , sbu
+    , temporary
+    , text
+    , time
+  default-language: Haskell2010

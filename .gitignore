@@ -1,6 +1,5 @@
-.stack-work/
-sbu.cabal
+.*
+!.git*
 *~
 tags
-dist
-dist-newstyle
+dist*
