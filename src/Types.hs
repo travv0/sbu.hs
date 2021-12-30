@@ -6,21 +6,21 @@ module Types (
     RunConfig (..),
     Game (..),
     Sbu,
-    Logger,
     Output (..),
+    runSbu,
 ) where
 
-import Control.Monad.Reader (ReaderT)
+import Control.Monad.Reader (ReaderT, runReaderT)
 import Data.Serialize (Serialize)
 import GHC.Generics (Generic)
-import Pipes (Producer')
 
-type Sbu = ReaderT RunConfig IO (Maybe Config)
+type Sbu = ReaderT RunConfig IO
+
+runSbu :: Sbu a -> RunConfig -> IO a
+runSbu = runReaderT
 
 data Output = Normal String | Info String | Warning String | Error String
     deriving (Show, Eq)
-
-type Logger m a = Producer' Output m a
 
 data RunConfig = RunConfig
     { runConfigConfig :: Config
