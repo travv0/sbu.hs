@@ -6,6 +6,7 @@
 module Lib.Internal (
     defaultConfigPath,
     readConfig,
+    writeConfig,
     createDefaultConfig,
     handleCommand,
     maybeWriteConfig,

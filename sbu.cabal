@@ -81,8 +81,5 @@ test-suite tests
       sbu
     , base
     , hspec
-    , directory
-    , mtl
-    , pipes
     , temporary
   default-language: Haskell2010
