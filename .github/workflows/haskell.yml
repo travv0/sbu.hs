@@ -58,18 +58,22 @@ jobs:
         cabal test all
 
     - uses: actions/setup-python@v2
+      if: matrix.os != 'windows-latest'
       with:
         python-version: '3.x'
 
     - name: Install Cram
+      if: matrix.os != 'windows-latest'
       run: |
         pip install cram
 
     - name: Install sbu for Cram
+      if: matrix.os != 'windows-latest'
       run: |
         cabal install --installdir=test/cram
 
     - name: Run Cram tests
+      if: matrix.os != 'windows-latest'
       run: |
         cram test/cram
 
