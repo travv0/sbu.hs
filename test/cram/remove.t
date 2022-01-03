@@ -14,3 +14,10 @@ remove game
 
   $ "$TESTDIR/sbu" -c config list
   another
+
+  $ "$TESTDIR/sbu" --config config remove another -y
+  Removed the following games:
+  another
+
+  $ "$TESTDIR/sbu" --config config list
+  

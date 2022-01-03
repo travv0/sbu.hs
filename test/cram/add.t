@@ -8,3 +8,9 @@ add games to config
   Save path: /new
   Save glob: *
   
+  $ "$TESTDIR/sbu" -c config add asdf -p "/asdf"
+  Game added successfully:
+  
+  Name: asdf
+  Save path: /asdf
+  

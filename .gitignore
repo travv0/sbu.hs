@@ -4,4 +4,6 @@
 tags
 dist*
 *.t.*
-test/sbu
+sbu
+sbu.exe
+*.bak

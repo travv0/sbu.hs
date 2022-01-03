@@ -1,4 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -342,9 +343,13 @@ editGame gName mNewName mNewPath mNewGlob = do
                 Just (_, []) -> error "Couldn't find game in list"
                 Just (front, game : back) -> do
                     let newName = fromMaybe (gameName game) mNewName
-                        newGlob = case fromMaybe (gameGlob game) mNewGlob of
-                            "none" -> ""
-                            glob -> glob
+                        newGlob =
+                            fmap
+                                ( \case
+                                    "none" -> ""
+                                    glob -> glob
+                                )
+                                mNewGlob
                     newPath <-
                         liftIO $
                             canonicalizePath' $
@@ -353,7 +358,7 @@ editGame gName mNewName mNewPath mNewGlob = do
                             game
                                 { gameName = newName
                                 , gamePath = newPath
-                                , gameGlob = newGlob
+                                , gameGlob = fromMaybe (gameGlob game) newGlob
                                 }
                     if
                             | isRelative newPath -> do
@@ -375,7 +380,7 @@ editGame gName mNewName mNewPath mNewGlob = do
                                         game
                                         (Just newName)
                                         (Just newPath)
-                                        (Just newGlob)
+                                        newGlob
                                 backupDirExists <-
                                     liftIO $
                                         doesDirectoryExist $

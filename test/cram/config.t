@@ -1,19 +1,19 @@
 edit config
-  $ "$TESTDIR/sbu" -c config config
+  $ "$TESTDIR/sbu" -c config config | sed -E -e "s#$HOME#\$HOME#"
   Creating new config file at `config'.
   Use the `config' command to update default values, which are:
   
-  Backup path: /*/sbu_backups (glob)
+  Backup path: $HOME/sbu_backups
   Backup frequency (in minutes): 15
   Number of backups to keep: 20
   
-  Backup path: /*/sbu_backups (glob)
+  Backup path: $HOME/sbu_backups
   Backup frequency (in minutes): 15
   Number of backups to keep: 20
   
 
-  $ "$TESTDIR/sbu" -c config config -p /edited -f 5 -k 6
-  Backup path: /*/sbu_backups -> /edited (glob)
+  $ "$TESTDIR/sbu" -c config config -p /edited -f 5 -k 6 | sed -E -e "s#$HOME#\$HOME#"
+  Backup path: $HOME/sbu_backups -> /edited
   Backup frequency (in minutes): 15 -> 5
   Number of backups to keep: 20 -> 6
   

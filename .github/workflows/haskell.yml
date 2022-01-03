@@ -53,10 +53,6 @@ jobs:
       run: |
         cabal build all
 
-    - name: Test
-      run: |
-        cabal test all
-
     - uses: actions/setup-python@v2
       if: matrix.os != 'windows-latest'
       with:
@@ -67,15 +63,9 @@ jobs:
       run: |
         pip install cram
 
-    - name: Install sbu for Cram
-      if: matrix.os != 'windows-latest'
+    - name: Test
       run: |
-        cabal install --installdir=test/cram
-
-    - name: Run Cram tests
-      if: matrix.os != 'windows-latest'
-      run: |
-        cram test/cram
+        ./test.sh
 
   stack:
     name: stack / ghc ${{ matrix.ghc }}

@@ -7,7 +7,7 @@ cabal-version: 1.12
 -- hash: d3b4f9b9f61664d8fe93f527d6caf3b93d3babc0c9ab13b848966f94f1c763a0
 
 name:           sbu
-version:        2.7.0
+version:        2.7.1
 description:    Please see the README on GitHub at <https://github.com/tssund93/sbu#readme>
 homepage:       https://github.com/tssund93/sbu#readme
 bug-reports:    https://github.com/tssund93/sbu/issues

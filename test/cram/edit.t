@@ -7,6 +7,11 @@ edit game
   Save glob: 
   
 
+  $ "$TESTDIR/sbu" -c config edit test -p "/edited"
+  Name: test
+  Save path: /edited
+  
+
   $ "$TESTDIR/sbu" -c config edit another -n new -p "/edited" -g ".*"
   Name: another -> new
   Save path: /another/path -> /edited
