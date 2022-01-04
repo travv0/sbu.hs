@@ -87,7 +87,7 @@ jobs:
       name: Cache ~/.stack
       with:
         path: ~/.stack
-        key: ${{ runner.os }}-${{ matrix.ghc }}-stack-${{ hashFiles('sbu.cabal') }}
+        key: ${{ runner.os }}-${{ matrix.ghc }}-stack-${{ hashFiles('vbu.cabal') }}
 
     - name: Install dependencies
       run: |

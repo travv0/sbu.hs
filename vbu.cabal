@@ -6,11 +6,11 @@ cabal-version: 1.12
 --
 -- hash: d3b4f9b9f61664d8fe93f527d6caf3b93d3babc0c9ab13b848966f94f1c763a0
 
-name:           sbu
-version:        2.7.1
-description:    Please see the README on GitHub at <https://github.com/tssund93/sbu#readme>
-homepage:       https://github.com/tssund93/sbu#readme
-bug-reports:    https://github.com/tssund93/sbu/issues
+name:           vbu
+version:        3.0.0
+description:    Please see the README on GitHub at <https://github.com/travv0/vbu#readme>
+homepage:       https://github.com/travv0/vbu#readme
+bug-reports:    https://github.com/travv0/vbu/issues
 author:         Travis
 maintainer:     tssund93@gmail.com
 copyright:      2018 Travis
@@ -19,11 +19,10 @@ license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     README.md
-    ChangeLog.md
 
 source-repository head
   type: git
-  location: https://github.com/tssund93/sbu
+  location: https://github.com/travv0/vbu
 
 library
   exposed-modules:
@@ -32,7 +31,7 @@ library
       Options
       Types
   other-modules:
-      Paths_sbu
+      Paths_vbu
   hs-source-dirs:
       src
   ghc-options: -O2 -Wall
@@ -55,15 +54,15 @@ library
     , time
   default-language: Haskell2010
 
-executable sbu
+executable vbu
   main-is: Main.hs
   other-modules:
-      Paths_sbu
+      Paths_vbu
   hs-source-dirs:
       app
   ghc-options: -O2 -threaded -rtsopts -with-rtsopts=-N -Wall
   build-depends:
-      sbu
+      vbu
     , base
     , exceptions
     , optparse-applicative

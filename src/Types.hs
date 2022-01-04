@@ -4,20 +4,20 @@
 module Types (
     Config (..),
     RunConfig (..),
-    Game (..),
-    Sbu,
+    Group (..),
+    Vbu,
     Output (..),
-    runSbu,
+    runVbu,
 ) where
 
 import Control.Monad.Reader (ReaderT, runReaderT)
 import Data.Serialize (Serialize)
 import GHC.Generics (Generic)
 
-type Sbu = ReaderT RunConfig IO
+type Vbu = ReaderT RunConfig IO
 
-runSbu :: Sbu a -> RunConfig -> IO a
-runSbu = runReaderT
+runVbu :: Vbu a -> RunConfig -> IO a
+runVbu = runReaderT
 
 data Output = Normal String | Info String | Warning String | Error String
     deriving (Show, Eq)
@@ -31,16 +31,16 @@ data Config = Config
     { configBackupDir :: FilePath
     , configBackupFreq :: Integer
     , configBackupsToKeep :: Integer
-    , configGames :: [Game]
+    , configGroups :: [Group]
     }
     deriving (Show, Generic, Eq)
 
-data Game = Game
-    { gameName :: String
-    , gamePath :: FilePath
-    , gameGlob :: String
+data Group = Group
+    { groupName :: String
+    , groupPath :: FilePath
+    , groupGlob :: String
     }
     deriving (Show, Generic, Eq)
 
 instance Serialize Config
-instance Serialize Game
+instance Serialize Group

@@ -4,7 +4,7 @@
 tags
 dist*
 *.t.*
-sbu
-sbu.exe
+vbu
+vbu.exe
 *.bak
 stack.*

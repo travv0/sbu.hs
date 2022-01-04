@@ -1,25 +1,25 @@
   $ cp "$TESTDIR/config" config
 
-list info for all games
-  $ "$TESTDIR/sbu" -c config info
+list info for all groups
+  $ "$TESTDIR/vbu" -c config info
   Name: another
-  Save path: /another/path
-  Save glob: save*
+  Path: /another/path
+  Glob: save*
   
   Name: test
-  Save path: /test/game/path
+  Path: /test/group/path
   
 
-list info for selected games
-  $ "$TESTDIR/sbu" -c config info another
+list info for selected groups
+  $ "$TESTDIR/vbu" -c config info another
   Name: another
-  Save path: /another/path
-  Save glob: save*
+  Path: /another/path
+  Glob: save*
   
 
-  $ "$TESTDIR/sbu" -c config info another new
+  $ "$TESTDIR/vbu" -c config info another new
   Name: another
-  Save path: /another/path
-  Save glob: save*
+  Path: /another/path
+  Glob: save*
   
-  \x1b[0;93mWarning: No game named `new'\x1b[0m (esc)
+  \x1b[0;93mWarning: No group named `new'\x1b[0m (esc)

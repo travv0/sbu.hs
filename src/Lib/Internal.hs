@@ -84,13 +84,13 @@ import System.FilePath.Glob (
     matchWith,
  )
 import System.IO (Handle, hFlush, hPutStrLn, stderr, stdout)
-import Types (Config (..), Game (..), Output (..), RunConfig (..), Sbu)
+import Types (Config (..), Group (..), Output (..), RunConfig (..), Vbu)
 
 defaultGlob :: String
 defaultGlob = "**/*"
 
 defaultConfigDir :: IO FilePath
-defaultConfigDir = getAppUserDataDirectory "sbu"
+defaultConfigDir = getAppUserDataDirectory "vbu"
 
 defaultConfigPath :: IO FilePath
 defaultConfigPath = do
@@ -109,7 +109,7 @@ createLockFile = do
     if locked
         then do
             hPutStrLn stderr $
-                "sbu appears to be already running.  If it's not, delete the file `"
+                "vbu appears to be already running.  If it's not, delete the file `"
                     <> lockPath
                     <> "' and try again"
             liftIO exitFailure
@@ -131,7 +131,7 @@ withLockFile f = do
 defaultConfig :: IO Config
 defaultConfig = do
     home <- getHomeDirectory
-    return $ Config (home </> "sbu_backups") 15 20 []
+    return $ Config (home </> "vbu_backups") 15 20 []
 
 colorText :: (Pretty a, Semigroup a) => Color -> a -> Doc AnsiStyle
 colorText c = annotate (color c) . pretty
@@ -192,15 +192,27 @@ outputToDoc (Info s) = (stderr, infoText $ T.pack s)
 outputToDoc (Warning s) = (stderr, warningText $ T.pack s)
 outputToDoc (Error s) = (stderr, errorText $ T.pack s)
 
-handleCommand :: Command -> Sbu (Maybe Config)
-handleCommand (AddCmd (AddOptions game savePath glob)) = do
-    path <- liftIO $ canonicalizePath' savePath
-    addGame game path glob
-handleCommand ListCmd = listGames
-handleCommand (InfoCmd (InfoOptions games)) = infoGames games
-handleCommand (RemoveCmd (RemoveOptions games yes)) = removeGames yes games
-handleCommand (EditCmd (EditOptions game mNewName mNewPath mNewGlob)) =
-    editGame game mNewName mNewPath mNewGlob
+info :: MonadIO m => Bool -> String -> m ()
+info verbose = when verbose . printOutput . Info
+
+warn :: MonadIO m => String -> m ()
+warn = printOutput . Warning
+
+err :: MonadIO m => String -> m ()
+err = printOutput . Error
+
+prn :: MonadIO m => String -> m ()
+prn = printOutput . Normal
+
+handleCommand :: Command -> Vbu (Maybe Config)
+handleCommand (AddCmd (AddOptions group path glob)) = do
+    path' <- liftIO $ canonicalizePath' path
+    addGroup group path' glob
+handleCommand ListCmd = listGroups
+handleCommand (InfoCmd (InfoOptions groups)) = infoGroups groups
+handleCommand (RemoveCmd (RemoveOptions groups yes)) = removeGroups yes groups
+handleCommand (EditCmd (EditOptions group mNewName mNewPath mNewGlob)) =
+    editGroup group mNewName mNewPath mNewGlob
 handleCommand
     (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep)) = do
         config <- asks runConfigConfig
@@ -215,53 +227,50 @@ handleCommand (ConfigCmd ConfigDefaults) = do
         (configBackupDir dc)
         (Just $ configBackupFreq dc)
         (Just $ configBackupsToKeep dc)
-handleCommand (BackupCmd (BackupOptions games loop verbose)) =
-    local (\c -> c{runConfigVerbose = verbose}) $ backupGames loop games
+handleCommand (BackupCmd (BackupOptions groups loop verbose)) =
+    local (\c -> c{runConfigVerbose = verbose}) $ backupGroups loop groups
 
-validGameNameChars :: Set Char
-validGameNameChars =
+validGroupNameChars :: Set Char
+validGroupNameChars =
     fromList $
         ['A' .. 'Z']
             <> ['a' .. 'z']
             <> ['0' .. '9']
             <> ['-', '_']
 
-isValidGameName :: String -> Bool
-isValidGameName = all (`elem` validGameNameChars)
+isValidGroupName :: String -> Bool
+isValidGroupName = all (`elem` validGroupNameChars)
 
-addGame :: String -> FilePath -> Maybe String -> Sbu (Maybe Config)
-addGame game path glob = do
+addGroup :: String -> FilePath -> Maybe String -> Vbu (Maybe Config)
+addGroup group path glob = do
     config <- asks runConfigConfig
     if
-            | game `elem` map gameName (configGames config) -> do
-                printOutput $
-                    Error $ "Game with the name " <> game <> " already exists"
+            | group `elem` map groupName (configGroups config) -> do
+                err $ "Group with the name " <> group <> " already exists"
                 return Nothing
-            | not $ isValidGameName game -> do
-                printOutput $
-                    Error $
-                        "Invalid characters in name `" <> game
-                            <> "': only alphanumeric characters, underscores, and hyphens are allowed"
+            | not $ isValidGroupName group -> do
+                err $
+                    "Invalid characters in name `" <> group
+                        <> "': only alphanumeric characters, underscores, and hyphens are allowed"
                 return Nothing
             | otherwise ->
                 if isRelative path
                     then do
-                        printOutput $
-                            Error $
-                                "Save path must be absolute, but relative path was supplied: "
-                                    <> path
+                        err $
+                            "Path must be absolute, but relative path was supplied: "
+                                <> path
                         return Nothing
                     else do
                         let newGlob = case fromMaybe "" glob of
                                 "none" -> ""
                                 g -> g
-                            newGame = Game game path newGlob
-                        printOutput $ Normal "Game added successfully:\n"
-                        liftIO $ printGame newGame Nothing Nothing Nothing
+                            newGroup = Group group path newGlob
+                        prn "Group added successfully:\n"
+                        liftIO $ printGroup newGroup Nothing Nothing Nothing
                         return $
                             Just $
                                 config
-                                    { configGames = newGame : configGames config
+                                    { configGroups = newGroup : configGroups config
                                     }
 
 canonicalizePath' :: FilePath -> IO FilePath
@@ -271,111 +280,104 @@ canonicalizePath' ('~' : path) = do
     canonicalizePath $ homeDir </> trimmedPath
 canonicalizePath' path = canonicalizePath path
 
-listGames :: Sbu (Maybe Config)
-listGames = do
-    gNames <- gameNames
-    printOutput $ Normal $ intercalate "\n" gNames
+listGroups :: Vbu (Maybe Config)
+listGroups = do
+    gNames <- groupNames
+    prn $ intercalate "\n" gNames
     return Nothing
 
-removeGames :: Bool -> NonEmpty String -> Sbu (Maybe Config)
-removeGames yes games = do
+removeGroups :: Bool -> NonEmpty String -> Vbu (Maybe Config)
+removeGroups yes groups = do
     config <- asks runConfigConfig
     if yes
         then do
-            printOutput $
-                Normal $
-                    "Removed the following games:\n"
-                        <> intercalate "\n" (toList games)
+            prn $
+                "Removed the following groups:\n"
+                    <> intercalate "\n" (toList groups)
             return $
                 Just $
                     config
-                        { configGames =
-                            filter ((`notElem` games) . gameName) $
-                                configGames config
+                        { configGroups =
+                            filter ((`notElem` groups) . groupName) $
+                                configGroups config
                         }
         else do
-            warnMissingGames games
-            gamesToRemove <-
+            warnMissingGroups groups
+            groupsToRemove <-
                 filterM promptRemove $
-                    filter ((`elem` games) . gameName) $
-                        configGames config
+                    filter ((`elem` groups) . groupName) $
+                        configGroups config
             mapM_
-                (\g -> printOutput $ Normal $ "Removed " <> gameName g)
-                gamesToRemove
+                (\g -> prn $ "Removed " <> groupName g)
+                groupsToRemove
             return $
                 Just $
                     config
-                        { configGames =
+                        { configGroups =
                             filter
-                                ( (`notElem` map gameName gamesToRemove)
-                                    . gameName
+                                ( (`notElem` map groupName groupsToRemove)
+                                    . groupName
                                 )
-                                $ configGames config
+                                $ configGroups config
                         }
 
-infoGames :: [String] -> Sbu (Maybe Config)
-infoGames games = do
-    allGameNames <- gameNames
-    mapM_ infoGame $ if null games then allGameNames else games
+infoGroups :: [String] -> Vbu (Maybe Config)
+infoGroups groups = do
+    allGroupNames <- groupNames
+    mapM_ infoGroup $ if null groups then allGroupNames else groups
     return Nothing
 
-editGame ::
+editGroup ::
     String ->
     Maybe String ->
     Maybe FilePath ->
     Maybe String ->
-    Sbu (Maybe Config)
-editGame _ Nothing Nothing Nothing = do
-    printOutput $
-        Error
-            "One or more of --name, --path, or --glob must be provided."
+    Vbu (Maybe Config)
+editGroup _ Nothing Nothing Nothing = do
+    err "One or more of --name, --path, or --glob must be provided."
     return Nothing
-editGame gName mNewName mNewPath mNewGlob = do
+editGroup gName mNewName mNewPath mNewGlob = do
     config <- asks runConfigConfig
-    let i = elemIndex gName $ map gameName (configGames config)
-        mSplitList = splitAt <$> i <*> pure (configGames config)
+    let i = elemIndex gName $ map groupName (configGroups config)
+        mSplitList = splitAt <$> i <*> pure (configGroups config)
     case mSplitList of
         Nothing -> do
-            warnMissingGames [gName]
+            warnMissingGroups [gName]
             return Nothing
-        Just (_, []) -> error "Couldn't find game in list"
-        Just (front, game : back) -> do
-            let newName = fromMaybe (gameName game) mNewName
+        Just (_, []) -> error "Couldn't find group in list"
+        Just (front, group : back) -> do
+            let newName = fromMaybe (groupName group) mNewName
                 newGlob = fmap (\case "none" -> ""; glob -> glob) mNewGlob
             newPath <-
                 liftIO $
-                    canonicalizePath' $ fromMaybe (gamePath game) mNewPath
-            let editedGame =
-                    game
-                        { gameName = newName
-                        , gamePath = newPath
-                        , gameGlob = fromMaybe (gameGlob game) newGlob
+                    canonicalizePath' $ fromMaybe (groupPath group) mNewPath
+            let editedGroup =
+                    group
+                        { groupName = newName
+                        , groupPath = newPath
+                        , groupGlob = fromMaybe (groupGlob group) newGlob
                         }
             if
                     | isRelative newPath -> do
-                        printOutput $
-                            Error $
-                                "Save path must be absolute, but relative path was supplied: "
-                                    <> newPath
+                        err $
+                            "Path must be absolute, but relative path was supplied: "
+                                <> newPath
                         return Nothing
-                    | not $ isValidGameName newName -> do
-                        printOutput $
-                            Error $
-                                "Invalid characters in name `"
-                                    <> newName
-                                    <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
+                    | not $ isValidGroupName newName -> do
+                        err $
+                            "Invalid characters in name `"
+                                <> newName
+                                <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
                         return Nothing
                     | otherwise -> do
                         liftIO $
-                            printGame game (Just newName) (Just newPath) newGlob
+                            printGroup group (Just newName) (Just newPath) newGlob
                         backupDirExists <-
                             liftIO $
                                 doesDirectoryExist $
                                     configBackupDir config </> gName
                         when (isJust mNewName && backupDirExists) $ do
-                            printOutput $
-                                Info
-                                    "Game name changed, renaming backup directory..."
+                            warn "Group name changed, renaming backup directory..."
                             liftIO $
                                 renameDirectory
                                     (configBackupDir config </> gName)
@@ -384,19 +386,17 @@ editGame gName mNewName mNewPath mNewGlob = do
                         return $
                             Just $
                                 config
-                                    { configGames = front <> (editedGame : back)
+                                    { configGroups = front <> (editedGroup : back)
                                     }
 
 printConfigRow :: MonadIO m => String -> String -> Maybe String -> m ()
 printConfigRow label val newVal =
-    printOutput $
-        Normal $
-            label <> ": " <> val
-                <> case newVal of
-                    Just nv
-                        | val == nv -> ""
-                        | otherwise -> " -> " <> nv
-                    Nothing -> ""
+    prn $
+        label <> ": " <> val <> case newVal of
+            Just nv
+                | val == nv -> ""
+                | otherwise -> " -> " <> nv
+            Nothing -> ""
 
 printConfig ::
     MonadIO m =>
@@ -415,9 +415,9 @@ printConfig config mNewBackupDir mNewBackupFreq mNewBackupsToKeep = do
         "Number of backups to keep"
         (show $ configBackupsToKeep config)
         (show <$> mNewBackupsToKeep)
-    printOutput $ Normal ""
+    prn ""
 
-editConfig :: FilePath -> Maybe Integer -> Maybe Integer -> Sbu (Maybe Config)
+editConfig :: FilePath -> Maybe Integer -> Maybe Integer -> Vbu (Maybe Config)
 editConfig newBackupDir mBackupFreq mBackupsToKeep = do
     config <- asks runConfigConfig
     let newBackupFreq = fromMaybe (configBackupFreq config) mBackupFreq
@@ -425,10 +425,9 @@ editConfig newBackupDir mBackupFreq mBackupsToKeep = do
 
     if isRelative newBackupDir
         then do
-            printOutput $
-                Error $
-                    "Backup path must be absolute, but relative path was supplied: "
-                        <> newBackupDir
+            err $
+                "Backup path must be absolute, but relative path was supplied: "
+                    <> newBackupDir
             return Nothing
         else do
             liftIO $ printConfig config (Just newBackupDir) mBackupFreq mBackupsToKeep
@@ -440,24 +439,22 @@ editConfig newBackupDir mBackupFreq mBackupsToKeep = do
                         , configBackupsToKeep = newBackupsToKeep
                         }
 
-backupGames :: Bool -> [String] -> Sbu (Maybe Config)
-backupGames loop games = do
+backupGroups :: Bool -> [String] -> Vbu (Maybe Config)
+backupGroups loop groups = do
     RunConfig{runConfigConfig = config, runConfigVerbose = verbose} <- ask
-    allGameNames <- gameNames
-    let gamesToBackup = if null games then allGameNames else games
+    allGroupNames <- groupNames
+    let groupsToBackup = if null groups then allGroupNames else groups
     warnings <-
         foldM
-            ( \acc game -> do
+            ( \acc group -> do
                 warnings <-
-                    backupGame game `catchIOError` \e -> do
-                        printOutput $
-                            Error $
-                                "Error backing up " <> game <> ": " <> show e
+                    backupGroup group `catchIOError` \e -> do
+                        err $ "Error backing up " <> group <> ": " <> show e
                         return []
                 return $ acc <> warnings
             )
             []
-            gamesToBackup
+            groupsToBackup
     unless (null warnings) $ do
         let msg =
                 show (length warnings) <> " warning"
@@ -465,76 +462,73 @@ backupGames loop games = do
                     <> " occurred:"
         if verbose
             then do
-                printOutput $ Warning $ msg <> "\n"
-                mapM_ (printOutput . Warning) warnings
+                warn $ msg <> "\n"
+                mapM_ warn warnings
             else
-                printOutput $
-                    Warning $
-                        msg <> "\nPass --verbose flag to print all warnings after backup completes\n"
+                warn $
+                    msg <> "\nPass --verbose flag to print all warnings after backup completes\n"
     if loop
         then do
             liftIO $
                 threadDelay $
                     fromIntegral $ configBackupFreq config * 60 * 1000000
-            backupGames loop games
+            backupGroups loop groups
         else return Nothing
 
-backupGame :: String -> Sbu [String]
-backupGame gName = do
+backupGroup :: String -> Vbu [String]
+backupGroup gName = do
     config <- asks runConfigConfig
     startTime <- liftIO getCurrentTime
-    mGame <- getGameByName gName
-    case mGame of
-        Just game -> do
-            isDirectory <- liftIO $ doesDirectoryExist $ gamePath game
+    mGroup <- getGroupByName gName
+    case mGroup of
+        Just group -> do
+            isDirectory <- liftIO $ doesDirectoryExist $ groupPath group
             if isDirectory
                 then do
                     (backedUpCount, warnings) <-
                         backupFiles
-                            (gameName game)
-                            (gamePath game)
-                            (gameGlob game)
-                            (gamePath game)
+                            (groupName group)
+                            (groupPath group)
+                            (groupGlob group)
+                            (groupPath group)
                             (configBackupDir config </> gName)
                     now <- liftIO getCurrentTime
                     tz <- liftIO getCurrentTimeZone
                     when (backedUpCount > 0) $
-                        printOutput $
-                            Normal $
-                                "\nFinished backing up "
-                                    <> show backedUpCount
-                                    <> " file"
-                                    <> (if backedUpCount == 1 then "" else "s")
-                                    <> ( if null warnings
-                                            then ""
-                                            else
-                                                " with "
-                                                    <> show (length warnings)
-                                                    <> " warning"
-                                                    <> ( if length warnings == 1
-                                                            then ""
-                                                            else "s"
-                                                       )
-                                       )
-                                    <> " for "
-                                    <> gName
-                                    <> " in "
-                                    <> show (diffUTCTime now startTime)
-                                    <> " on "
-                                    <> formatTime
-                                        defaultTimeLocale
-                                        "%c"
-                                        (utcToLocalTime tz now)
-                                    <> "\n"
+                        prn $
+                            "\nFinished backing up "
+                                <> show backedUpCount
+                                <> " file"
+                                <> (if backedUpCount == 1 then "" else "s")
+                                <> ( if null warnings
+                                        then ""
+                                        else
+                                            " with "
+                                                <> show (length warnings)
+                                                <> " warning"
+                                                <> ( if length warnings == 1
+                                                        then ""
+                                                        else "s"
+                                                   )
+                                   )
+                                <> " for "
+                                <> gName
+                                <> " in "
+                                <> show (diffUTCTime now startTime)
+                                <> " on "
+                                <> formatTime
+                                    defaultTimeLocale
+                                    "%c"
+                                    (utcToLocalTime tz now)
+                                <> "\n"
                     return warnings
                 else do
-                    printOutput $
-                        Warning $
-                            "Path set for " <> gName <> " doesn't exist: "
-                                <> gamePath game
+                    warn $
+                        "Path set for " <> gName <> " doesn't exist: "
+                            <> groupPath group
                     return []
         Nothing -> do
-            warnMissingGames [gName]
+            warnMissingGroups [gName]
             return []
 
 backupFiles ::
@@ -543,13 +537,13 @@ backupFiles ::
     String ->
     FilePath ->
     FilePath ->
-    Sbu (Integer, [String])
-backupFiles game basePath glob from to = do
+    Vbu (Integer, [String])
+backupFiles group basePath glob from to = do
     files <- liftIO $ listDirectory from
     foldM
         ( \(c, es) f -> do
             (newCount, newErrs) <-
-                backupFile game basePath glob (from </> f) (to </> f)
+                backupFile group basePath glob (from </> f) (to </> f)
             return (c + newCount, es <> newErrs)
         )
         (0, [])
@@ -561,11 +555,11 @@ backupFile ::
     String ->
     FilePath ->
     FilePath ->
-    Sbu (Integer, [String])
-backupFile game basePath glob from to = do
+    Vbu (Integer, [String])
+backupFile group basePath glob from to = do
     isDirectory <- liftIO $ doesDirectoryExist from
     if isDirectory
-        then backupFiles game basePath glob from to
+        then backupFiles group basePath glob from to
         else if globMatches then backupFile' else return (0, [])
   where
     globMatches =
@@ -584,8 +578,8 @@ backupFile game basePath glob from to = do
             isSymlink <- liftIO $ pathIsSymbolicLink from
             if isSymlink
                 then do
-                    when verbose $
-                        printOutput $ Info $ from <> " appears to be a link to somewhere else in the filesystem. Skipping..."
+                    info verbose $
+                        from <> " appears to be a link to somewhere else in the filesystem. Skipping..."
                     return (0, [])
                 else do
                     backupExists <- liftIO $ doesFileExist to
@@ -616,20 +610,20 @@ backupFile game basePath glob from to = do
                         Nothing -> copyAndCleanup
             `catchIOError` \e -> do
                 let warning =
-                        "Unable to backup file " <> to <> " for game " <> game
+                        "Unable to backup file " <> to <> " for group " <> group
                             <> ":\n"
                             <> show e
                             <> "\n"
-                printOutput $ Warning warning
+                warn warning
                 return (1, [warning])
     copyAndCleanup = do
         liftIO $ createDirectoryIfMissing True $ dropFileName to
-        printOutput $ Normal $ from <> " ==>\n    " <> to
+        prn $ from <> " ==>\n    " <> to
         liftIO $ copyFileWithMetadata from to
         cleanupBackups to
         return (1, [])
 
-cleanupBackups :: FilePath -> Sbu ()
+cleanupBackups :: FilePath -> Vbu ()
 cleanupBackups backupPath = do
     RunConfig{runConfigConfig = config, runConfigVerbose = verbose} <- ask
     when (configBackupsToKeep config > 0) $ do
@@ -656,7 +650,7 @@ cleanupBackups backupPath = do
                     drop (fromIntegral $ configBackupsToKeep config) sortedFiles
             mapM_
                 ( \f -> do
-                    when verbose $ printOutput $ Info $ "Deleting " <> f
+                    info verbose $ "Deleting " <> f
                     liftIO $ removeFile f
                 )
                 filesToDelete
@@ -664,48 +658,48 @@ cleanupBackups backupPath = do
 formatModifiedTime :: UTCTime -> String
 formatModifiedTime = formatTime defaultTimeLocale "%Y_%m_%d_%H_%M_%S"
 
-infoGame :: String -> Sbu ()
-infoGame gName = do
-    cGames <- asks $ configGames . runConfigConfig
-    let matchingGames = filter (\g -> gameName g == gName) cGames
-    case matchingGames of
-        [] -> warnMissingGames [gName]
-        game : _ -> printGame game Nothing Nothing Nothing
+infoGroup :: String -> Vbu ()
+infoGroup gName = do
+    cGroups <- asks $ configGroups . runConfigConfig
+    let matchingGroups = filter (\g -> groupName g == gName) cGroups
+    case matchingGroups of
+        [] -> warnMissingGroups [gName]
+        group : _ -> printGroup group Nothing Nothing Nothing
 
-printGame ::
+printGroup ::
     MonadIO m =>
-    Game ->
+    Group ->
     Maybe String ->
     Maybe FilePath ->
     Maybe String ->
     m ()
-printGame game mNewName mNewPath mNewGlob = do
-    printConfigRow "Name" (gameName game) mNewName
-    printConfigRow "Save path" (gamePath game) mNewPath
-    when (not (null (gameGlob game)) || isJust mNewGlob) $
-        printConfigRow "Save glob" (gameGlob game) mNewGlob
-    printOutput $ Normal ""
+printGroup group mNewName mNewPath mNewGlob = do
+    printConfigRow "Name" (groupName group) mNewName
+    printConfigRow "Path" (groupPath group) mNewPath
+    when (not (null (groupGlob group)) || isJust mNewGlob) $
+        printConfigRow "Glob" (groupGlob group) mNewGlob
+    prn ""
 
-gameNames :: Sbu [String]
-gameNames = asks $ sort . map gameName . configGames . runConfigConfig
+groupNames :: Vbu [String]
+groupNames = asks $ sort . map groupName . configGroups . runConfigConfig
 
-promptRemove :: MonadIO m => Game -> m Bool
-promptRemove game = do
-    printOutput $ Normal $ "Permanently delete " <> gameName game <> "? (y/N) "
+promptRemove :: MonadIO m => Group -> m Bool
+promptRemove group = do
+    prn $ "Permanently delete " <> groupName group <> "? (y/N) "
     input <- liftIO getLine
     return $ toLower (head $ if null input then "n" else input) == 'y'
 
-warnMissingGames :: Foldable t => t String -> Sbu ()
-warnMissingGames games = do
-    cGames <- asks $ configGames . runConfigConfig
+warnMissingGroups :: Foldable t => t String -> Vbu ()
+warnMissingGroups groups = do
+    cGroups <- asks $ configGroups . runConfigConfig
     mapM_
         ( \g ->
-            when (g `notElem` map gameName cGames) $
-                printOutput $ Warning $ "No game named `" <> g <> "'"
+            when (g `notElem` map groupName cGroups) $
+                warn $ "No group named `" <> g <> "'"
         )
-        games
+        groups
 
-getGameByName :: String -> Sbu (Maybe Game)
-getGameByName name = do
-    games <- asks $ configGames . runConfigConfig
-    return $ find ((==) name . gameName) games
+getGroupByName :: String -> Vbu (Maybe Group)
+getGroupByName name = do
+    groups <- asks $ configGroups . runConfigConfig
+    return $ find ((==) name . groupName) groups

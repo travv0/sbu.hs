@@ -11,8 +11,8 @@ import System.FilePath ((<.>))
 import System.IO (hPutStrLn, stderr)
 import Types
 
-handleOptions :: SbuOptions -> IO ()
-handleOptions (SbuOptions configPath command) = do
+handleOptions :: VbuOptions -> IO ()
+handleOptions (VbuOptions configPath command) = do
     path <- fromMaybe <$> defaultConfigPath <*> pure configPath
     econfig <- readConfig path
     config <- case econfig of
@@ -31,7 +31,7 @@ handleOptions (SbuOptions configPath command) = do
                         Left _ -> createDefaultConfig path
                 else createDefaultConfig path
     newConfig <-
-        runSbu (handleCommand command) $
+        runVbu (handleCommand command) $
             RunConfig
                 { runConfigConfig = config
                 , runConfigVerbose = False

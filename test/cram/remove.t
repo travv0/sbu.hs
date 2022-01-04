@@ -1,23 +1,23 @@
   $ cp "$TESTDIR/config" config
 
-remove game
-  $ echo n | "$TESTDIR/sbu" -c config remove test
+remove group
+  $ echo n | "$TESTDIR/vbu" -c config remove test
   Permanently delete test? (y/N) 
 
-  $ "$TESTDIR/sbu" -c config list
+  $ "$TESTDIR/vbu" -c config list
   another
   test
 
-  $ echo y | "$TESTDIR/sbu" -c config remove test
+  $ echo y | "$TESTDIR/vbu" -c config remove test
   Permanently delete test? (y/N) 
   Removed test
 
-  $ "$TESTDIR/sbu" -c config list
+  $ "$TESTDIR/vbu" -c config list
   another
 
-  $ "$TESTDIR/sbu" --config config remove another -y
-  Removed the following games:
+  $ "$TESTDIR/vbu" --config config remove another -y
+  Removed the following groups:
   another
 
-  $ "$TESTDIR/sbu" --config config list
+  $ "$TESTDIR/vbu" --config config list
   

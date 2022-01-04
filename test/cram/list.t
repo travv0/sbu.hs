@@ -1,6 +1,6 @@
   $ cp "$TESTDIR/config" config
 
-list games
-  $ "$TESTDIR/sbu" -c config list
+list groups
+  $ "$TESTDIR/vbu" -c config list
   another
   test

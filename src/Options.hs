@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 
 module Options (
-    SbuOptions (..),
+    VbuOptions (..),
     Command (..),
     BackupOptions (..),
     AddOptions (..),
@@ -46,11 +46,11 @@ import Options.Applicative (
 import Options.Applicative.Builder.Internal (noGlobal)
 import Options.Applicative.NonEmpty (some1)
 import Options.Applicative.Types (readerAsk)
-import Paths_sbu (version)
+import Paths_vbu (version)
 
-data SbuOptions = SbuOptions
-    { sbuConfigPath :: Maybe FilePath
-    , sbuCommand :: Command
+data VbuOptions = VbuOptions
+    { vbuConfigPath :: Maybe FilePath
+    , vbuCommand :: Command
     }
     deriving (Show)
 
@@ -65,32 +65,32 @@ data Command
     deriving (Show)
 
 data BackupOptions = BackupOptions
-    { backupOptGames :: [String]
+    { backupOptGroups :: [String]
     , backupOptLoop :: Bool
     , backupOptVerbose :: Bool
     }
     deriving (Show)
 
 data AddOptions = AddOptions
-    { addOptGame :: String
+    { addOptGroup :: String
     , addOptPath :: FilePath
     , addOptGlob :: Maybe String
     }
     deriving (Show)
 
 newtype InfoOptions = InfoOptions
-    { infoOptGames :: [String]
+    { infoOptGroups :: [String]
     }
     deriving (Show)
 
 data RemoveOptions = RemoveOptions
-    { removeOptGames :: NonEmpty String
+    { removeOptGroups :: NonEmpty String
     , removeOptYes :: Bool
     }
     deriving (Show)
 
 data EditOptions = EditOptions
-    { editOptGame :: String
+    { editOptGroup :: String
     , editOptName :: Maybe String
     , editOptPath :: Maybe FilePath
     , editOptGlob :: Maybe String
@@ -114,9 +114,9 @@ backupParser =
                     ( argument
                         str
                         ( mconcat
-                            [ metavar "GAMES..."
+                            [ metavar "GROUPS..."
                             , help
-                                "List of games to back up.  If not provided, will back up all games"
+                                "List of groups to back up.  If not provided, will back up all groups"
                             ]
                         )
                     )
@@ -125,7 +125,7 @@ backupParser =
                         [ long "loop"
                         , short 'l'
                         , help
-                            "Keep running, backing up games at the interval specified in your config file"
+                            "Keep running, backing up groups at the interval specified in your config file"
                         ]
                     )
                 <*> switch
@@ -141,13 +141,13 @@ addParser :: Parser Command
 addParser =
     AddCmd
         <$> ( AddOptions
-                <$> argument str (metavar "GAME")
+                <$> argument str (metavar "GROUP")
                 <*> strOption
                     ( mconcat
                         [ long "path"
                         , short 'p'
-                        , metavar "SAVE_PATH"
-                        , help "Path to added game's save files"
+                        , metavar "PATH"
+                        , help "Path to added group's files"
                         ]
                     )
                 <*> option
@@ -155,13 +155,13 @@ addParser =
                     ( mconcat
                         [ long "glob"
                         , short 'g'
-                        , metavar "SAVE_FILE_GLOB"
+                        , metavar "FILE_GLOB"
                         , value Nothing
                         , help
-                            "Save file glob for added game's save files. \
+                            "File glob for added group's files. \
                             \Only files matching this pattern will be backed up. \
                             \The default is **/* which will recursively back up \
-                            \all files in SAVE_PATH"
+                            \all files in PATH"
                         ]
                     )
             )
@@ -173,10 +173,10 @@ infoParser =
             ( argument
                 str
                 ( mconcat
-                    [ metavar "GAMES..."
+                    [ metavar "GROUPS..."
                     , help
-                        "List of games to display info for.  If not provided, will display \
-                        \info for all games"
+                        "List of groups to display info for.  If not provided, will display \
+                        \info for all groups"
                     ]
                 )
             )
@@ -189,8 +189,8 @@ removeParser =
                     ( argument
                         str
                         ( mconcat
-                            [ metavar "GAMES..."
-                            , help "List of games to remove"
+                            [ metavar "GROUPS..."
+                            , help "List of groups to remove"
                             ]
                         )
                     )
@@ -208,7 +208,7 @@ editParser :: Parser Command
 editParser =
     EditCmd
         <$> ( EditOptions
-                <$> argument str (metavar "GAME")
+                <$> argument str (metavar "GROUP")
                 <*> option
                     maybeStr
                     ( mconcat
@@ -217,7 +217,7 @@ editParser =
                         , metavar "NEW_NAME"
                         , value Nothing
                         , help
-                            "Set game name to NEW_NAME. This will also update the directory \
+                            "Set group name to NEW_NAME. This will also update the directory \
                             \name in your backup directory"
                         ]
                     )
@@ -226,9 +226,9 @@ editParser =
                     ( mconcat
                         [ long "path"
                         , short 'p'
-                        , metavar "NEW_SAVE_PATH"
+                        , metavar "NEW_PATH"
                         , value Nothing
-                        , help "Set game's save path to NEW_SAVE_PATH"
+                        , help "Set group's path to NEW_PATH"
                         ]
                     )
                 <*> option
@@ -236,9 +236,9 @@ editParser =
                     ( mconcat
                         [ long "glob"
                         , short 'g'
-                        , metavar "NEW_SAVE_FILE_GLOB"
+                        , metavar "NEW_FILE_GLOB"
                         , value Nothing
-                        , help "Set game's save file glob to NEW_SAVE_FILE_GLOB. Setting this to an empty string or \"none\" implies the glob **/* which will recursively back up all files"
+                        , help "Set group's file glob to NEW_FILE_GLOB. Setting this to an empty string or \"none\" implies the glob **/* which will recursively back up all files"
                         ]
                     )
             )
@@ -254,7 +254,7 @@ configParser =
                         , short 'p'
                         , metavar "BACKUP_PATH"
                         , value Nothing
-                        , help "Set path to directory in which to back up saves"
+                        , help "Set path to directory in which to back up files"
                         ]
                     )
                 <*> option
@@ -264,7 +264,7 @@ configParser =
                         , short 'f'
                         , metavar "BACKUP_FREQUENCY"
                         , value Nothing
-                        , help "Set frequency in minutes to backup saves when looping"
+                        , help "Set frequency in minutes to backup files when looping"
                         ]
                     )
                 <*> option
@@ -286,9 +286,9 @@ configParser =
                     )
             )
 
-opts :: Parser SbuOptions
+opts :: Parser VbuOptions
 opts =
-    SbuOptions
+    VbuOptions
         <$> option
             maybeStr
             ( mconcat
@@ -300,7 +300,7 @@ opts =
                 ]
             )
         <*> ( infoOption
-                (concat ["sbu v", showVersion version, " (rev: ", take 7 $(gitHash), ")"])
+                (concat ["vbu v", showVersion version, " (rev: ", take 7 $(gitHash), ")"])
                 ( mconcat
                     [ long "version"
                     , help "Print version information"
@@ -316,33 +316,33 @@ commands =
         mconcat
             [ command
                 "backup"
-                (info backupParser (fullDesc <> progDesc "Backup your game saves"))
+                (info backupParser (fullDesc <> progDesc "Backup your files"))
             , command
                 "add"
-                (info addParser (fullDesc <> progDesc "Add games to backup"))
+                (info addParser (fullDesc <> progDesc "Add groups to backup"))
             , command
                 "list"
                 ( info
                     (pure ListCmd)
-                    (fullDesc <> progDesc "List games that can be backed up")
+                    (fullDesc <> progDesc "List groups that can be backed up")
                 )
             , command
                 "info"
-                (info infoParser (fullDesc <> progDesc "List info for games"))
+                (info infoParser (fullDesc <> progDesc "List info for groups"))
             , command
                 "remove"
                 ( info
                     removeParser
-                    (fullDesc <> progDesc "Remove games from backup")
+                    (fullDesc <> progDesc "Remove groups from backup")
                 )
             , command
                 "edit"
-                (info editParser (fullDesc <> progDesc "Edit game info"))
+                (info editParser (fullDesc <> progDesc "Edit group info"))
             , command
                 "config"
                 ( info
                     configParser
-                    (fullDesc <> progDesc "Manage sbu configuration")
+                    (fullDesc <> progDesc "Manage vbu configuration")
                 )
             ]
 

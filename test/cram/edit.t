@@ -1,25 +1,25 @@
   $ cp "$TESTDIR/config" config
 
-edit game
-  $ "$TESTDIR/sbu" -c config edit test -p "/edited" -g none
+edit group
+  $ "$TESTDIR/vbu" -c config edit test -p "/edited" -g none
   Name: test
-  Save path: /test/game/path -> /edited
-  Save glob: 
+  Path: /test/group/path -> /edited
+  Glob: 
   
 
-  $ "$TESTDIR/sbu" -c config edit test -p "/edited"
+  $ "$TESTDIR/vbu" -c config edit test -p "/edited"
   Name: test
-  Save path: /edited
+  Path: /edited
   
 
-  $ "$TESTDIR/sbu" -c config edit another -n new -p "/edited" -g ".*"
+  $ "$TESTDIR/vbu" -c config edit another -n new -p "/edited" -g ".*"
   Name: another -> new
-  Save path: /another/path -> /edited
-  Save glob: save* -> .*
+  Path: /another/path -> /edited
+  Glob: save* -> .*
   
 
-  $ "$TESTDIR/sbu" -c config edit new -g ""
+  $ "$TESTDIR/vbu" -c config edit new -g ""
   Name: new
-  Save path: /edited
-  Save glob: .* -> 
+  Path: /edited
+  Glob: .* -> 
   
