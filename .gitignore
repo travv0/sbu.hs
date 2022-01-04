@@ -7,3 +7,4 @@ dist*
 sbu
 sbu.exe
 *.bak
+stack.*

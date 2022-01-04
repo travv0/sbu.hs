@@ -325,81 +325,67 @@ editGame ::
     Maybe FilePath ->
     Maybe String ->
     Sbu (Maybe Config)
+editGame _ Nothing Nothing Nothing = do
+    printOutput $
+        Error
+            "One or more of --name, --path, or --glob must be provided."
+    return Nothing
 editGame gName mNewName mNewPath mNewGlob = do
     config <- asks runConfigConfig
-    case (mNewName, mNewPath, mNewGlob) of
-        (Nothing, Nothing, Nothing) -> do
-            printOutput $
-                Error
-                    "One or more of --name, --path, or --glob must be provided."
+    let i = elemIndex gName $ map gameName (configGames config)
+        mSplitList = splitAt <$> i <*> pure (configGames config)
+    case mSplitList of
+        Nothing -> do
+            warnMissingGames [gName]
             return Nothing
-        (_, _, _) -> do
-            let i = elemIndex gName $ map gameName (configGames config)
-                mSplitList = splitAt <$> i <*> pure (configGames config)
-            case mSplitList of
-                Nothing -> do
-                    warnMissingGames [gName]
-                    return Nothing
-                Just (_, []) -> error "Couldn't find game in list"
-                Just (front, game : back) -> do
-                    let newName = fromMaybe (gameName game) mNewName
-                        newGlob =
-                            fmap
-                                ( \case
-                                    "none" -> ""
-                                    glob -> glob
-                                )
-                                mNewGlob
-                    newPath <-
+        Just (_, []) -> error "Couldn't find game in list"
+        Just (front, game : back) -> do
+            let newName = fromMaybe (gameName game) mNewName
+                newGlob = fmap (\case "none" -> ""; glob -> glob) mNewGlob
+            newPath <-
+                liftIO $
+                    canonicalizePath' $ fromMaybe (gamePath game) mNewPath
+            let editedGame =
+                    game
+                        { gameName = newName
+                        , gamePath = newPath
+                        , gameGlob = fromMaybe (gameGlob game) newGlob
+                        }
+            if
+                    | isRelative newPath -> do
+                        printOutput $
+                            Error $
+                                "Save path must be absolute, but relative path was supplied: "
+                                    <> newPath
+                        return Nothing
+                    | not $ isValidGameName newName -> do
+                        printOutput $
+                            Error $
+                                "Invalid characters in name `"
+                                    <> newName
+                                    <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
+                        return Nothing
+                    | otherwise -> do
                         liftIO $
-                            canonicalizePath' $
-                                fromMaybe (gamePath game) mNewPath
-                    let editedGame =
-                            game
-                                { gameName = newName
-                                , gamePath = newPath
-                                , gameGlob = fromMaybe (gameGlob game) newGlob
-                                }
-                    if
-                            | isRelative newPath -> do
-                                printOutput $
-                                    Error $
-                                        "Save path must be absolute, but relative path was supplied: "
-                                            <> newPath
-                                return Nothing
-                            | not $ isValidGameName newName -> do
-                                printOutput $
-                                    Error $
-                                        "Invalid characters in name `"
-                                            <> newName
-                                            <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
-                                return Nothing
-                            | otherwise -> do
-                                liftIO $
-                                    printGame
-                                        game
-                                        (Just newName)
-                                        (Just newPath)
-                                        newGlob
-                                backupDirExists <-
-                                    liftIO $
-                                        doesDirectoryExist $
-                                            configBackupDir config </> gName
-                                when (isJust mNewName && backupDirExists) $ do
-                                    printOutput $
-                                        Info
-                                            "Game name changed, renaming backup directory..."
-                                    liftIO $
-                                        renameDirectory
-                                            (configBackupDir config </> gName)
-                                            (configBackupDir config </> newName)
+                            printGame game (Just newName) (Just newPath) newGlob
+                        backupDirExists <-
+                            liftIO $
+                                doesDirectoryExist $
+                                    configBackupDir config </> gName
+                        when (isJust mNewName && backupDirExists) $ do
+                            printOutput $
+                                Info
+                                    "Game name changed, renaming backup directory..."
+                            liftIO $
+                                renameDirectory
+                                    (configBackupDir config </> gName)
+                                    (configBackupDir config </> newName)
 
-                                return $
-                                    Just $
-                                        config
-                                            { configGames =
-                                                front <> (editedGame : back)
-                                            }
+                        return $
+                            Just $
+                                config
+                                    { configGames = front <> (editedGame : back)
+                                    }
 
 printConfigRow :: MonadIO m => String -> String -> Maybe String -> m ()
 printConfigRow label val newVal =
