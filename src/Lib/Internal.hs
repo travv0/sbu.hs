@@ -21,7 +21,7 @@ import Control.Monad.Reader (ask, asks, local)
 import qualified Data.ByteString as BS
 import Data.Char (toLower)
 import Data.Foldable (find, toList, traverse_)
-import Data.List (elemIndex, intercalate, sort)
+import Data.List (elemIndex, intercalate, isPrefixOf, sort)
 import Data.List.NonEmpty (NonEmpty)
 import Data.Maybe (fromMaybe, isJust)
 import Data.Serialize (decode, encode)
@@ -630,10 +630,10 @@ cleanupBackups backupPath = do
         files <-
             liftIO $
                 (backupPath :)
+                    . filter (not . (takeFileName backupPath `isPrefixOf`))
                     <$> globDir1
-                        ( compile $
-                            takeFileName backupPath
-                                <> ".bak.[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]"
+                        ( compile
+                            "*.bak.[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]"
                         )
                         (dropFileName backupPath)
         when (toInteger (length files) > configBackupsToKeep config) $ do

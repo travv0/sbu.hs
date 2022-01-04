@@ -3,7 +3,7 @@
 edit group
   $ "$TESTDIR/vbu" -c config edit test -p "/edited" -g none
   Name: test
-  Path: /test/group/path -> /edited
+  Path: /test/game/path -> /edited
   Glob: 
   
 

@@ -7,7 +7,7 @@ list info for all groups
   Glob: save*
   
   Name: test
-  Path: /test/group/path
+  Path: /test/game/path
   
 
 list info for selected groups
