@@ -72,7 +72,6 @@ import System.FilePath (
     dropFileName,
     isRelative,
     takeDirectory,
-    takeFileName,
     (<.>),
     (</>),
  )
@@ -630,7 +629,7 @@ cleanupBackups backupPath = do
         files <-
             liftIO $
                 (backupPath :)
-                    . filter (not . (takeFileName backupPath `isPrefixOf`))
+                    . filter (backupPath `isPrefixOf`)
                     <$> globDir1
                         ( compile
                             "*.bak.[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]_[0-9][0-9]"
