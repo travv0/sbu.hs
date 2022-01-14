@@ -248,8 +248,9 @@ handleCommand (AddCmd (AddOptions group path glob)) = do
 handleCommand ListCmd = listGroups
 handleCommand (InfoCmd (InfoOptions groups)) = infoGroups groups
 handleCommand (RemoveCmd (RemoveOptions groups yes)) = removeGroups yes groups
-handleCommand (EditCmd (EditOptions group mNewName mNewPath mNewGlob)) =
-    editGroup group mNewName mNewPath mNewGlob
+handleCommand (EditCmd (EditOptions group mNewName mNewPath mNewGlob)) = do
+    mNewPath' <- liftIO $ traverse canonicalizePath' mNewPath
+    editGroup group mNewName mNewPath' mNewGlob
 handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep))
     = do
         config       <- asks runConfigConfig
@@ -292,6 +293,8 @@ addGroup group path glob = do
                     <> path
                 return Nothing
             else do
+                pathExists <- liftIO $ doesDirectoryExist path
+                unless pathExists $ warn $ "Path doesn't exist: " <> path
                 let newGlob = case fromMaybe "" glob of
                         "none" -> ""
                         g      -> g
@@ -368,16 +371,20 @@ editGroup gName mNewName mNewPath mNewGlob = do
             return Nothing
         Just (_    , []          ) -> error "Couldn't find group in list"
         Just (front, group : back) -> do
+            liftIO $ traverse_
+                (\path -> do
+                    pathExists <- doesDirectoryExist path
+                    unless pathExists $ warn $ "Path doesn't exist: " <> path
+                )
+                mNewPath
             let newName = fromMaybe (groupName group) mNewName
+                newPath = fromMaybe (groupPath group) mNewPath
                 newGlob = fmap
                     (\case
                         "none" -> ""
                         glob   -> glob
                     )
                     mNewGlob
-            newPath <- liftIO $ canonicalizePath' $ fromMaybe
-                (groupPath group)
-                mNewPath
             let editedGroup = group
                     { groupName = newName
                     , groupPath = newPath
