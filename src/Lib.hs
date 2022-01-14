@@ -32,6 +32,5 @@ handleOptions (VbuOptions configPath command) = do
                         Right c -> return c
                         Left  _ -> createDefaultConfig path
                 else createDefaultConfig path
-    newConfig <- runVbu (handleCommand command)
-        $ RunConfig { runConfigConfig = config, runConfigVerbose = False }
+    newConfig <- runVbu (handleCommand command) config
     liftIO $ maybeWriteConfig path newConfig

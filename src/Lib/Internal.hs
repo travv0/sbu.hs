@@ -28,7 +28,6 @@ import           Control.Monad.IO.Class         ( MonadIO
 import           Control.Monad.ListM            ( sortByM )
 import           Control.Monad.Reader           ( ask
                                                 , asks
-                                                , local
                                                 )
 import qualified Data.ByteString               as BS
 import           Data.Char                      ( toLower )
@@ -41,7 +40,6 @@ import           Data.List                      ( elemIndex
                                                 , isPrefixOf
                                                 , sort
                                                 )
-import           Data.List.NonEmpty             ( NonEmpty )
 import           Data.Maybe                     ( fromMaybe
                                                 , isJust
                                                 )
@@ -117,7 +115,6 @@ import           System.IO                      ( Handle
 import           Types                          ( Config(..)
                                                 , Group(..)
                                                 , Output(..)
-                                                , RunConfig(..)
                                                 , Vbu
                                                 )
 
@@ -242,29 +239,13 @@ prn :: MonadIO m => String -> m ()
 prn = printOutput . Normal
 
 handleCommand :: Command -> Vbu (Maybe Config)
-handleCommand (AddCmd (AddOptions group path glob)) = do
-    path' <- liftIO $ canonicalizePath' path
-    addGroup group path' glob
-handleCommand ListCmd = listGroups
-handleCommand (InfoCmd (InfoOptions groups)) = infoGroups groups
-handleCommand (RemoveCmd (RemoveOptions groups yes)) = removeGroups yes groups
-handleCommand (EditCmd (EditOptions group mNewName mNewPath mNewGlob)) = do
-    mNewPath' <- liftIO $ traverse canonicalizePath' mNewPath
-    editGroup group mNewName mNewPath' mNewGlob
-handleCommand (ConfigCmd (ConfigOptions mBackupDir mBackupFreq mBackupsToKeep))
-    = do
-        config       <- asks runConfigConfig
-        newBackupDir <- liftIO $ canonicalizePath' $ fromMaybe
-            (configBackupDir config)
-            mBackupDir
-        editConfig newBackupDir mBackupFreq mBackupsToKeep
-handleCommand (ConfigCmd ConfigDefaults) = do
-    dc <- liftIO defaultConfig
-    editConfig (configBackupDir dc)
-               (Just $ configBackupFreq dc)
-               (Just $ configBackupsToKeep dc)
-handleCommand (BackupCmd (BackupOptions groups loop verbose)) =
-    local (\c -> c { runConfigVerbose = verbose }) $ backupGroups loop groups
+handleCommand (AddCmd opts)    = addGroup opts
+handleCommand ListCmd          = listGroups
+handleCommand (InfoCmd   opts) = infoGroups opts
+handleCommand (RemoveCmd opts) = removeGroups opts
+handleCommand (EditCmd   opts) = editGroup opts
+handleCommand (ConfigCmd opts) = editConfig opts
+handleCommand (BackupCmd opts) = backupGroups opts
 
 validGroupNameChars :: Set Char
 validGroupNameChars =
@@ -273,36 +254,38 @@ validGroupNameChars =
 isValidGroupName :: String -> Bool
 isValidGroupName = all (`elem` validGroupNameChars)
 
-addGroup :: String -> FilePath -> Maybe String -> Vbu (Maybe Config)
-addGroup group path glob = do
-    config <- asks runConfigConfig
-    if
-        | group `elem` map groupName (configGroups config) -> do
-            err $ "Group with the name " <> group <> " already exists"
-            return Nothing
-        | not $ isValidGroupName group -> do
-            err
-                $ "Invalid characters in name `"
-                <> group
-                <> "': only alphanumeric characters, underscores, and hyphens are allowed"
-            return Nothing
-        | isRelative path -> do
-            err
-                $  "Path must be absolute, but relative path was supplied: "
-                <> path
-            return Nothing
-        | otherwise -> do
-            pathExists <- liftIO $ doesDirectoryExist path
-            unless pathExists $ warn $ "Path doesn't exist: " <> path
-            let newGlob = case fromMaybe "" glob of
-                    "none" -> ""
-                    g      -> g
-                newGroup = Group group path newGlob
-            prn "Group added successfully:\n"
-            liftIO $ printGroup newGroup Nothing Nothing Nothing
-            return $ Just $ config
-                { configGroups = newGroup : configGroups config
-                }
+addGroup :: AddOptions -> Vbu (Maybe Config)
+addGroup AddOptions { addOptGroup = group, addOptPath = path, addOptGlob = glob }
+    = do
+        config <- ask
+        path'  <- liftIO $ canonicalizePath' path
+        if
+            | group `elem` map groupName (configGroups config) -> do
+                err $ "Group with the name " <> group <> " already exists"
+                return Nothing
+            | not $ isValidGroupName group -> do
+                err
+                    $ "Invalid characters in name `"
+                    <> group
+                    <> "': only alphanumeric characters, underscores, and hyphens are allowed"
+                return Nothing
+            | isRelative path' -> do
+                err
+                    $  "Path must be absolute, but relative path was supplied: "
+                    <> path'
+                return Nothing
+            | otherwise -> do
+                pathExists <- liftIO $ doesDirectoryExist path'
+                unless pathExists $ warn $ "Path doesn't exist: " <> path'
+                let newGlob = case fromMaybe "" glob of
+                        "none" -> ""
+                        g      -> g
+                    newGroup = Group group path' newGlob
+                prn "Group added successfully:\n"
+                liftIO $ printGroup newGroup Nothing Nothing Nothing
+                return $ Just $ config
+                    { configGroups = newGroup : configGroups config
+                    }
 
 canonicalizePath' :: FilePath -> IO FilePath
 canonicalizePath' ('~' : path) = do
@@ -317,112 +300,115 @@ listGroups = do
     prn $ intercalate "\n" gNames
     return Nothing
 
-removeGroups :: Bool -> NonEmpty String -> Vbu (Maybe Config)
-removeGroups yes groups = do
-    config <- asks runConfigConfig
-    if yes
-        then do
-            prn $ "Removed the following groups:\n" <> intercalate
-                "\n"
-                (toList groups)
-            return $ Just $ config
-                { configGroups = filter ((`notElem` groups) . groupName)
-                                     $ configGroups config
-                }
-        else do
-            warnMissingGroups groups
-            groupsToRemove <-
-                filterM promptRemove
-                $ filter ((`elem` groups) . groupName)
-                $ configGroups config
-            mapM_ (\g -> prn $ "Removed " <> groupName g) groupsToRemove
-            return $ Just $ config
-                { configGroups =
-                    filter
-                            ( (`notElem` map groupName groupsToRemove)
-                            . groupName
-                            )
-                        $ configGroups config
-                }
+removeGroups :: RemoveOptions -> Vbu (Maybe Config)
+removeGroups RemoveOptions { removeOptYes = yes, removeOptGroups = groups } =
+    do
+        config <- ask
+        if yes
+            then do
+                prn $ "Removed the following groups:\n" <> intercalate
+                    "\n"
+                    (toList groups)
+                return $ Just $ config
+                    { configGroups = filter ((`notElem` groups) . groupName)
+                                         $ configGroups config
+                    }
+            else do
+                warnMissingGroups groups
+                groupsToRemove <-
+                    filterM promptRemove
+                    $ filter ((`elem` groups) . groupName)
+                    $ configGroups config
+                mapM_ (\g -> prn $ "Removed " <> groupName g) groupsToRemove
+                return $ Just $ config
+                    { configGroups =
+                        filter
+                                ( (`notElem` map groupName groupsToRemove)
+                                . groupName
+                                )
+                            $ configGroups config
+                    }
 
-infoGroups :: [String] -> Vbu (Maybe Config)
-infoGroups groups = do
+infoGroups :: InfoOptions -> Vbu (Maybe Config)
+infoGroups InfoOptions { infoOptGroups = groups } = do
     allGroupNames <- groupNames
     mapM_ infoGroup $ if null groups then allGroupNames else groups
     return Nothing
 
-editGroup
-    :: String
-    -> Maybe String
-    -> Maybe FilePath
-    -> Maybe String
-    -> Vbu (Maybe Config)
-editGroup _ Nothing Nothing Nothing = do
-    err "One or more of --name, --path, or --glob must be provided."
-    return Nothing
-editGroup gName mNewName mNewPath mNewGlob = do
-    config <- asks runConfigConfig
-    let i          = elemIndex gName $ map groupName (configGroups config)
-        mSplitList = splitAt <$> i <*> pure (configGroups config)
-    case mSplitList of
-        Nothing -> do
-            warnMissingGroups [gName]
-            return Nothing
-        Just (_    , []          ) -> error "Couldn't find group in list"
-        Just (front, group : back) -> do
-            liftIO $ traverse_
-                (\path -> do
-                    pathExists <- doesDirectoryExist path
-                    unless pathExists $ warn $ "Path doesn't exist: " <> path
-                )
-                mNewPath
-            let newName = fromMaybe (groupName group) mNewName
-                newPath = fromMaybe (groupPath group) mNewPath
-                newGlob = fmap
-                    (\case
-                        "none" -> ""
-                        glob   -> glob
+editGroup :: EditOptions -> Vbu (Maybe Config)
+editGroup EditOptions { editOptName = Nothing, editOptPath = Nothing, editOptGlob = Nothing }
+    = do
+        err "One or more of --name, --path, or --glob must be provided."
+        return Nothing
+editGroup EditOptions { editOptGroup = gName, editOptName = mNewName, editOptPath = mNewPath, editOptGlob = mNewGlob }
+    = do
+        config <- ask
+        let i          = elemIndex gName $ map groupName (configGroups config)
+            mSplitList = splitAt <$> i <*> pure (configGroups config)
+        case mSplitList of
+            Nothing -> do
+                warnMissingGroups [gName]
+                return Nothing
+            Just (_    , []          ) -> error "Couldn't find group in list"
+            Just (front, group : back) -> do
+                mNewPath' <- liftIO $ traverse canonicalizePath' mNewPath
+                liftIO $ traverse_
+                    (\path -> do
+                        pathExists <- doesDirectoryExist path
+                        unless pathExists
+                            $  warn
+                            $  "Path doesn't exist: "
+                            <> path
                     )
-                    mNewGlob
-            let editedGroup = group
-                    { groupName = newName
-                    , groupPath = newPath
-                    , groupGlob = fromMaybe (groupGlob group) newGlob
-                    }
-            if
-                | isRelative newPath
-                -> do
-                    err
-                        $ "Path must be absolute, but relative path was supplied: "
-                        <> newPath
-                    return Nothing
-                | not $ isValidGroupName newName
-                -> do
-                    err
-                        $ "Invalid characters in name `"
-                        <> newName
-                        <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
-                    return Nothing
-                | otherwise
-                -> do
-                    liftIO $ printGroup group
-                                        (Just newName)
-                                        (Just newPath)
-                                        newGlob
-                    backupDirExists <-
-                        liftIO
-                        $   doesDirectoryExist
-                        $   configBackupDir config
-                        </> gName
-                    when (isJust mNewName && backupDirExists) $ do
-                        warn "Group name changed, renaming backup directory..."
-                        liftIO $ renameDirectory
-                            (configBackupDir config </> gName)
-                            (configBackupDir config </> newName)
-
-                    return $ Just $ config
-                        { configGroups = front <> (editedGroup : back)
+                    mNewPath'
+                let newName = fromMaybe (groupName group) mNewName
+                    newPath = fromMaybe (groupPath group) mNewPath'
+                    newGlob = fmap
+                        (\case
+                            "none" -> ""
+                            glob   -> glob
+                        )
+                        mNewGlob
+                let editedGroup = group
+                        { groupName = newName
+                        , groupPath = newPath
+                        , groupGlob = fromMaybe (groupGlob group) newGlob
                         }
+                if
+                    | isRelative newPath
+                    -> do
+                        err
+                            $ "Path must be absolute, but relative path was supplied: "
+                            <> newPath
+                        return Nothing
+                    | not $ isValidGroupName newName
+                    -> do
+                        err
+                            $ "Invalid characters in name `"
+                            <> newName
+                            <> "': only alphanumeric characters, `_', `-', and `/' are allowed"
+                        return Nothing
+                    | otherwise
+                    -> do
+                        liftIO $ printGroup group
+                                            (Just newName)
+                                            (Just newPath)
+                                            newGlob
+                        backupDirExists <-
+                            liftIO
+                            $   doesDirectoryExist
+                            $   configBackupDir config
+                            </> gName
+                        when (isJust mNewName && backupDirExists) $ do
+                            warn
+                                "Group name changed, renaming backup directory..."
+                            liftIO $ renameDirectory
+                                (configBackupDir config </> gName)
+                                (configBackupDir config </> newName)
+
+                        return $ Just $ config
+                            { configGroups = front <> (editedGroup : back)
+                            }
 
 printConfigRow :: MonadIO m => String -> String -> Maybe String -> m ()
 printConfigRow label val newVal = prn $ label <> ": " <> val <> case newVal of
@@ -447,71 +433,97 @@ printConfig config mNewBackupDir mNewBackupFreq mNewBackupsToKeep = do
                    (show <$> mNewBackupsToKeep)
     prn ""
 
-editConfig :: FilePath -> Maybe Integer -> Maybe Integer -> Vbu (Maybe Config)
-editConfig newBackupDir mBackupFreq mBackupsToKeep = do
-    config <- asks runConfigConfig
-    let newBackupFreq = fromMaybe (configBackupFreq config) mBackupFreq
-        newBackupsToKeep =
-            fromMaybe (configBackupsToKeep config) mBackupsToKeep
+editConfig :: ConfigOptions -> Vbu (Maybe Config)
+editConfig ConfigDefaults = do
+    dc <- liftIO defaultConfig
+    editConfig ConfigOptions
+        { configOptBackupDir     = Just $ configBackupDir dc
+        , configOptBackupFreq    = Just $ configBackupFreq dc
+        , configOptBackupsToKeep = Just $ configBackupsToKeep dc
+        }
+editConfig ConfigOptions { configOptBackupDir = mBackupDir, configOptBackupFreq = mBackupFreq, configOptBackupsToKeep = mBackupsToKeep }
+    = do
+        config       <- ask
+        newBackupDir <- liftIO $ canonicalizePath' $ fromMaybe
+            (configBackupDir config)
+            mBackupDir
+        let newBackupFreq = fromMaybe (configBackupFreq config) mBackupFreq
+            newBackupsToKeep =
+                fromMaybe (configBackupsToKeep config) mBackupsToKeep
 
-    if isRelative newBackupDir
-        then do
-            err
-                $ "Backup path must be absolute, but relative path was supplied: "
-                <> newBackupDir
-            return Nothing
-        else do
-            liftIO $ printConfig config
-                                 (Just newBackupDir)
-                                 mBackupFreq
-                                 mBackupsToKeep
-            return $ Just $ config { configBackupDir     = newBackupDir
-                                   , configBackupFreq    = newBackupFreq
-                                   , configBackupsToKeep = newBackupsToKeep
-                                   }
-
-backupGroups :: Bool -> [String] -> Vbu (Maybe Config)
-backupGroups loop groups = do
-    RunConfig { runConfigConfig = config, runConfigVerbose = verbose } <- ask
-    allGroupNames <- groupNames
-    let groupsToBackup = if null groups then allGroupNames else groups
-    warnings <- foldM
-        (\acc group -> do
-            warnings <- backupGroup group `catchIOError` \e -> do
-                err $ "Error backing up " <> group <> ": " <> show e
-                return []
-            return $ acc <> warnings
-        )
-        []
-        groupsToBackup
-    unless (null warnings) $ do
-        let msg =
-                show (length warnings)
-                    <> " warning"
-                    <> (if length warnings == 1 then "" else "s")
-                    <> " occurred:"
-        if verbose
+        if isRelative newBackupDir
             then do
-                warn $ msg <> "\n"
-                mapM_ warn warnings
-            else
-                warn
-                $ msg
-                <> "\nPass --verbose flag to print all warnings after backup completes\n"
-    if loop
-        then do
-            liftIO
-                $ threadDelay
-                $ fromIntegral
-                $ configBackupFreq config
-                * 60
-                * 1000000
-            backupGroups loop groups
-        else return Nothing
+                err
+                    $ "Backup path must be absolute, but relative path was supplied: "
+                    <> newBackupDir
+                return Nothing
+            else do
+                liftIO $ printConfig config
+                                     (Just newBackupDir)
+                                     mBackupFreq
+                                     mBackupsToKeep
+                return $ Just $ config { configBackupDir     = newBackupDir
+                                       , configBackupFreq    = newBackupFreq
+                                       , configBackupsToKeep = newBackupsToKeep
+                                       }
 
-backupGroup :: String -> Vbu [String]
-backupGroup gName = do
-    config    <- asks runConfigConfig
+backupGroups :: BackupOptions -> Vbu (Maybe Config)
+backupGroups opts@BackupOptions { backupOptGroups = groups, backupOptVerbose = verbose, backupOptLoop = loop }
+    = do
+        config        <- ask
+        allGroupNames <- groupNames
+        let groupsToBackup = if null groups then allGroupNames else groups
+        warnings <- foldM
+            (\acc group -> do
+                warnings <- backupGroup opts group `catchIOError` \e -> do
+                    err $ "Error backing up " <> group <> ": " <> show e
+                    return []
+                return $ acc <> warnings
+            )
+            []
+            groupsToBackup
+        unless (null warnings) $ do
+            let msg =
+                    show (length warnings)
+                        <> " warning"
+                        <> (if length warnings == 1 then "" else "s")
+                        <> " occurred:"
+            if verbose
+                then do
+                    warn $ msg <> "\n"
+                    mapM_ warn warnings
+                else
+                    warn
+                    $ msg
+                    <> "\nPass --verbose flag to print all warnings after backup completes\n"
+        if loop
+            then do
+                liftIO
+                    $ threadDelay
+                    $ fromIntegral
+                    $ configBackupFreq config
+                    * 60
+                    * 1000000
+                backupGroups opts
+            else return Nothing
+
+safeFileOperation
+    :: MonadIO m
+    => (FilePath -> FilePath -> IO a)
+    -> Bool
+    -> FilePath
+    -> FilePath
+    -> m (Either String a)
+safeFileOperation op force from to = do
+    fileExists <- liftIO $ doesFileExist to
+    if force || not fileExists
+        then do
+            liftIO $ Right <$> op from to
+        else return . Left $ "Not overwriting existing file: " <> to
+
+backupGroup :: BackupOptions -> String -> Vbu [String]
+backupGroup opts gName = do
+    config    <- ask
     startTime <- liftIO getCurrentTime
     mGroup    <- getGroupByName gName
     case mGroup of
@@ -520,6 +532,7 @@ backupGroup gName = do
             if isDirectory
                 then do
                     (backedUpCount, warnings) <- backupFiles
+                        opts
                         (groupName group)
                         (groupPath group)
                         (groupGlob group)
@@ -563,17 +576,19 @@ backupGroup gName = do
             return []
 
 backupFiles
-    :: String
+    :: BackupOptions
+    -> String
     -> FilePath
     -> String
     -> FilePath
     -> FilePath
     -> Vbu (Integer, [String])
-backupFiles group basePath glob from to = do
+backupFiles opts group basePath glob from to = do
     files <- liftIO $ listDirectory from
     foldM
         (\(c, es) f -> do
-            (newCount, newErrs) <- backupFile group
+            (newCount, newErrs) <- backupFile opts
+                                              group
                                               basePath
                                               glob
                                               (from </> f)
@@ -584,17 +599,19 @@ backupFiles group basePath glob from to = do
         files
 
 backupFile
-    :: String
+    :: BackupOptions
+    -> String
     -> FilePath
     -> String
     -> FilePath
     -> FilePath
     -> Vbu (Integer, [String])
-backupFile group basePath glob from to = do
-    isDirectory <- liftIO $ doesDirectoryExist from
-    if isDirectory
-        then backupFiles group basePath glob from to
-        else if globMatches then backupFile' else return (0, [])
+backupFile opts@BackupOptions { backupOptForce = force, backupOptVerbose = verbose } group basePath glob from to
+    = do
+        isDirectory <- liftIO $ doesDirectoryExist from
+        if isDirectory
+            then backupFiles opts group basePath glob from to
+            else if globMatches then backupFile' else return (0, [])
   where
     globMatches = matchWith
         (matchDefault { matchDotsImplicitly = True })
@@ -605,7 +622,6 @@ backupFile group basePath glob from to = do
         from
     backupFile' =
         do
-            verbose   <- asks runConfigVerbose
             isSymlink <- liftIO $ pathIsSymbolicLink from
             if isSymlink
                 then do
@@ -634,12 +650,17 @@ backupFile group basePath glob from to = do
                                                $ utctDayTime toModTime
                                            }
                                 then do
-                                    liftIO
-                                        $   renameFile to
+                                    fileResult <-
+                                        liftIO
+                                        $ safeFileOperation renameFile force to
                                         $   to
                                         <.> "bak"
                                         <.> formatModifiedTime toModTime
-                                    copyAndCleanup
+                                    case fileResult of
+                                        Left warning -> do
+                                            warn warning
+                                            return (1, [warning])
+                                        Right () -> copyAndCleanup
                                 else return (0, [])
                         Nothing -> copyAndCleanup
         `catchIOError` \e -> do
@@ -656,13 +677,19 @@ backupFile group basePath glob from to = do
     copyAndCleanup = do
         liftIO $ createDirectoryIfMissing True $ dropFileName to
         prn $ from <> " ==>\n    " <> to
-        liftIO $ copyFileWithMetadata from to
-        cleanupBackups to
-        return (1, [])
+        fileResult <- liftIO
+            $ safeFileOperation copyFileWithMetadata force from to
+        case fileResult of
+            Left warning -> do
+                warn warning
+                return (1, [warning])
+            Right () -> do
+                cleanupBackups opts to
+                return (1, [])
 
-cleanupBackups :: FilePath -> Vbu ()
-cleanupBackups backupPath = do
-    RunConfig { runConfigConfig = config, runConfigVerbose = verbose } <- ask
+cleanupBackups :: BackupOptions -> FilePath -> Vbu ()
+cleanupBackups BackupOptions { backupOptVerbose = verbose } backupPath = do
+    config <- ask
     when (configBackupsToKeep config > 0) $ do
         files <-
             liftIO
@@ -696,8 +723,8 @@ formatModifiedTime = formatTime defaultTimeLocale "%Y_%m_%d_%H_%M_%S"
 
 infoGroup :: String -> Vbu ()
 infoGroup gName = do
-    cGroups <- asks $ configGroups . runConfigConfig
-    let matchingGroups = filter (\g -> groupName g == gName) cGroups
+    groups <- asks configGroups
+    let matchingGroups = filter (\g -> groupName g == gName) groups
     case matchingGroups of
         []        -> warnMissingGroups [gName]
         group : _ -> printGroup group Nothing Nothing Nothing
@@ -717,7 +744,7 @@ printGroup group mNewName mNewPath mNewGlob = do
     prn ""
 
 groupNames :: Vbu [String]
-groupNames = asks $ sort . map groupName . configGroups . runConfigConfig
+groupNames = asks $ sort . map groupName . configGroups
 
 promptRemove :: MonadIO m => Group -> m Bool
 promptRemove group = do
@@ -727,7 +754,7 @@ promptRemove group = do
 
 warnMissingGroups :: Foldable t => t String -> Vbu ()
 warnMissingGroups groups = do
-    cGroups <- asks $ configGroups . runConfigConfig
+    cGroups <- asks configGroups
     mapM_
         (\g ->
             when (g `notElem` map groupName cGroups)
@@ -740,5 +767,5 @@ warnMissingGroups groups = do
 
 getGroupByName :: String -> Vbu (Maybe Group)
 getGroupByName name = do
-    groups <- asks $ configGroups . runConfigConfig
+    groups <- asks configGroups
     return $ find ((==) name . groupName) groups

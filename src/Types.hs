@@ -3,7 +3,6 @@
 
 module Types
     ( Config(..)
-    , RunConfig(..)
     , Group(..)
     , Vbu
     , Output(..)
@@ -16,18 +15,13 @@ import           Control.Monad.Reader           ( ReaderT
 import           Data.Serialize                 ( Serialize )
 import           GHC.Generics                   ( Generic )
 
-type Vbu = ReaderT RunConfig IO
+type Vbu = ReaderT Config IO
 
-runVbu :: Vbu a -> RunConfig -> IO a
+runVbu :: Vbu a -> Config -> IO a
 runVbu = runReaderT
 
 data Output = Normal String | Info String | Warning String | Error String
     deriving (Show, Eq)
-
-data RunConfig = RunConfig
-    { runConfigConfig  :: Config
-    , runConfigVerbose :: Bool
-    }
 
 data Config = Config
     { configBackupDir     :: FilePath

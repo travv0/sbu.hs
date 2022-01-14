@@ -68,6 +68,7 @@ data BackupOptions = BackupOptions
     { backupOptGroups  :: [String]
     , backupOptLoop    :: Bool
     , backupOptVerbose :: Bool
+    , backupOptForce   :: Bool
     }
     deriving Show
 
@@ -133,6 +134,14 @@ backupParser =
                         [ long "verbose"
                         , short 'v'
                         , help "Print verbose output"
+                        ]
+                    )
+            <*> switch
+                    (mconcat
+                        [ long "force"
+                        , short 'f'
+                        , help
+                            "Force all file backups to overwrite any conflicting files"
                         ]
                     )
             )
