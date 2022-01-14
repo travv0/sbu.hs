@@ -7,7 +7,7 @@ cabal-version: 1.12
 -- hash: d3b4f9b9f61664d8fe93f527d6caf3b93d3babc0c9ab13b848966f94f1c763a0
 
 name:           vbu
-version:        3.0.1
+version:        3.1.0
 description:    Please see the README on GitHub at <https://github.com/travv0/vbu#readme>
 homepage:       https://github.com/travv0/vbu#readme
 bug-reports:    https://github.com/travv0/vbu/issues

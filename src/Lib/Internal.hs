@@ -286,24 +286,23 @@ addGroup group path glob = do
                 <> group
                 <> "': only alphanumeric characters, underscores, and hyphens are allowed"
             return Nothing
-        | otherwise -> if isRelative path
-            then do
-                err
-                    $  "Path must be absolute, but relative path was supplied: "
-                    <> path
-                return Nothing
-            else do
-                pathExists <- liftIO $ doesDirectoryExist path
-                unless pathExists $ warn $ "Path doesn't exist: " <> path
-                let newGlob = case fromMaybe "" glob of
-                        "none" -> ""
-                        g      -> g
-                    newGroup = Group group path newGlob
-                prn "Group added successfully:\n"
-                liftIO $ printGroup newGroup Nothing Nothing Nothing
-                return $ Just $ config
-                    { configGroups = newGroup : configGroups config
-                    }
+        | isRelative path -> do
+            err
+                $  "Path must be absolute, but relative path was supplied: "
+                <> path
+            return Nothing
+        | otherwise -> do
+            pathExists <- liftIO $ doesDirectoryExist path
+            unless pathExists $ warn $ "Path doesn't exist: " <> path
+            let newGlob = case fromMaybe "" glob of
+                    "none" -> ""
+                    g      -> g
+                newGroup = Group group path newGlob
+            prn "Group added successfully:\n"
+            liftIO $ printGroup newGroup Nothing Nothing Nothing
+            return $ Just $ config
+                { configGroups = newGroup : configGroups config
+                }
 
 canonicalizePath' :: FilePath -> IO FilePath
 canonicalizePath' ('~' : path) = do
