@@ -1,18 +1,20 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE RankNTypes #-}
 
-module Types (
-    Config (..),
-    RunConfig (..),
-    Group (..),
-    Vbu,
-    Output (..),
-    runVbu,
-) where
+module Types
+    ( Config(..)
+    , RunConfig(..)
+    , Group(..)
+    , Vbu
+    , Output(..)
+    , runVbu
+    ) where
 
-import Control.Monad.Reader (ReaderT, runReaderT)
-import Data.Serialize (Serialize)
-import GHC.Generics (Generic)
+import           Control.Monad.Reader           ( ReaderT
+                                                , runReaderT
+                                                )
+import           Data.Serialize                 ( Serialize )
+import           GHC.Generics                   ( Generic )
 
 type Vbu = ReaderT RunConfig IO
 
@@ -23,15 +25,15 @@ data Output = Normal String | Info String | Warning String | Error String
     deriving (Show, Eq)
 
 data RunConfig = RunConfig
-    { runConfigConfig :: Config
+    { runConfigConfig  :: Config
     , runConfigVerbose :: Bool
     }
 
 data Config = Config
-    { configBackupDir :: FilePath
-    , configBackupFreq :: Integer
+    { configBackupDir     :: FilePath
+    , configBackupFreq    :: Integer
     , configBackupsToKeep :: Integer
-    , configGroups :: [Group]
+    , configGroups        :: [Group]
     }
     deriving (Show, Generic, Eq)
 

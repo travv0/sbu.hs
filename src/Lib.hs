@@ -1,23 +1,25 @@
 module Lib where
 
-import Control.Monad.IO.Class (liftIO)
-import qualified Data.ByteString as BS
-import Data.Maybe (fromMaybe)
-import Data.Serialize (decode)
-import Lib.Internal
-import Options
-import System.Directory (doesFileExist)
-import System.FilePath ((<.>))
-import System.IO (hPutStrLn, stderr)
-import Types
+import           Control.Monad.IO.Class         ( liftIO )
+import qualified Data.ByteString               as BS
+import           Data.Maybe                     ( fromMaybe )
+import           Data.Serialize                 ( decode )
+import           Lib.Internal
+import           Options
+import           System.Directory               ( doesFileExist )
+import           System.FilePath                ( (<.>) )
+import           System.IO                      ( hPutStrLn
+                                                , stderr
+                                                )
+import           Types
 
 handleOptions :: VbuOptions -> IO ()
 handleOptions (VbuOptions configPath command) = do
-    path <- fromMaybe <$> defaultConfigPath <*> pure configPath
+    path    <- fromMaybe <$> defaultConfigPath <*> pure configPath
     econfig <- readConfig path
-    config <- case econfig of
+    config  <- case econfig of
         Right c -> return c
-        Left _ -> do
+        Left  _ -> do
             let backupPath = path <.> "bak"
             backupExists <- doesFileExist backupPath
             if backupExists
@@ -28,12 +30,8 @@ handleOptions (VbuOptions configPath command) = do
                     backupConfig <- BS.readFile backupPath
                     case decode backupConfig of
                         Right c -> return c
-                        Left _ -> createDefaultConfig path
+                        Left  _ -> createDefaultConfig path
                 else createDefaultConfig path
-    newConfig <-
-        runVbu (handleCommand command) $
-            RunConfig
-                { runConfigConfig = config
-                , runConfigVerbose = False
-                }
+    newConfig <- runVbu (handleCommand command)
+        $ RunConfig { runConfigConfig = config, runConfigVerbose = False }
     liftIO $ maybeWriteConfig path newConfig
